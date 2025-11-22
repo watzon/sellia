@@ -20,36 +20,38 @@ module Sellia
   end
 
   def self.run_serve
-    host = "localhost"
+    host = "0.0.0.0"
     port = 8080
+    domain = "localhost"
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: sellia serve [options]"
-      parser.on("--host HOST", "Host to bind to") { |h| host = h }
-      parser.on("--port PORT", "Port to listen on") { |p| port = p.to_i }
+      parser.on("--host HOST", "Host to bind to (default: 0.0.0.0)") { |h| host = h }
+      parser.on("--port PORT", "Port to listen on (default: 8080)") { |p| port = p.to_i }
+      parser.on("--domain DOMAIN", "Base domain for subdomains (default: localhost)") { |d| domain = d }
       parser.on("-h", "--help", "Show this help") { puts parser; exit }
     end
 
-    Server.new(host, port).start
+    Server.new(host, port, domain).start
   end
 
   def self.run_tunnel
-    via = "localhost"
-    via_port = 8080
+    server_host = "localhost"
+    server_port = 8080
     local_port = 3000
-    subdomain = "test"
-    auto_tls = false
+    subdomain = nil
+    local_host = "localhost"
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: sellia tunnel [options]"
-      parser.on("--via HOST", "Server host") { |h| via = h }
-      parser.on("--via-port PORT", "Server port") { |p| via_port = p.to_i }
-      parser.on("--port PORT", "Local port to forward") { |p| local_port = p.to_i }
-      parser.on("--subdomain SUBDOMAIN", "Subdomain to use") { |s| subdomain = s }
-      parser.on("--auto-tls", "Enable Auto TLS (stubbed)") { auto_tls = true }
-      parser.on("-h", "--help", "Show this help") { puts parser; exit }
+      parser.on("-h HOST", "--host HOST", "Upstream server host (default: localhost)") { |h| server_host = h }
+      parser.on("--server-port PORT", "Upstream server port (default: 8080)") { |p| server_port = p.to_i }
+      parser.on("-p PORT", "--port PORT", "Local port to forward") { |p| local_port = p.to_i }
+      parser.on("-s SUBDOMAIN", "--subdomain SUBDOMAIN", "Request this subdomain") { |s| subdomain = s }
+      parser.on("-l HOST", "--local-host HOST", "Override Host header to this value (default: localhost)") { |h| local_host = h }
+      parser.on("--help", "Show this help") { puts parser; exit }
     end
 
-    Client.new(via, via_port, local_port, subdomain).start
+    Client.new(server_host, server_port, local_port, subdomain, local_host).start
   end
 end
