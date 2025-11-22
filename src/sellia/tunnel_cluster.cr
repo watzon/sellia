@@ -25,73 +25,83 @@ module Sellia
     end
 
     private def handle_connection
+      remote : TCPSocket? = nil
+      local : TCPSocket? = nil
+
       begin
+        # Connection to localtunnel server
         remote = TCPSocket.new(@remote_host, @remote_port)
         remote.sync = true
-        Log.debug { "Connected to tunnel server" }
+        remote.keepalive = true
+        remote.tcp_keepalive_idle = 60
+        remote.tcp_keepalive_interval = 10
+        remote.tcp_keepalive_count = 3
 
-        # Read initial chunk to detect activity and rewrite headers
-        buffer = Bytes.new(4096)
-        bytes_read = remote.read(buffer)
+        Log.debug { "Connected to tunnel server at #{@remote_host}:#{@remote_port}" }
+
+        # Wait for the first data from remote (this means we have a request to proxy)
+        initial_buffer = Bytes.new(4096)
+        bytes_read = remote.read(initial_buffer)
 
         if bytes_read == 0
-          Log.debug { "Remote closed connection" }
-          remote.close
+          Log.debug { "Remote closed connection immediately" }
           return
         end
 
-        # We got data! Connect to local
-        Log.debug { "Received request, forwarding to local" }
+        # We got data! This is an HTTP request. Now connect to local server.
+        Log.debug { "Received #{bytes_read} bytes, connecting to local server" }
         local = TCPSocket.new("localhost", @local_port)
         local.sync = true
 
         # Rewrite Host header if needed
-        data = String.new(buffer[0, bytes_read])
+        request_data = String.new(initial_buffer[0, bytes_read])
 
-        # Regex to find Host header: \r\nHost: <value>\r\n
-        # We replace it with Host: <local_host>
-        # Note: This is a simple replacement on the first chunk.
         if @local_host
-          # Rewrite Host header. Matches Host: at start of line (after \n or start of string)
-          data = data.sub(/((?:^|\n)[Hh]ost: )\S+/, "\\1#{@local_host}")
+          # Rewrite Host header - match "\r\nHost: value" or "Host: value" at start
+          request_data = request_data.sub(/(\r\n[Hh]ost: )\S+/, "\\1#{@local_host}")
+          Log.debug { "Rewrote Host header to: #{@local_host}" }
         end
 
-        local.write(data.to_slice)
+        # Send the (possibly modified) request to local server
+        local.write(request_data.to_slice)
 
-        # Pipe the rest
-        # We need bidirectional piping
+        # Now set up bidirectional piping
+        done = Channel(Nil).new(2)
 
-        done = Channel(Nil).new
-
+        # Pipe remote -> local
         spawn do
           begin
-            IO.copy(remote, local)
+            IO.copy(remote.not_nil!, local.not_nil!)
           rescue ex
-            Log.debug { "Error piping remote -> local: #{ex.message}" }
+            Log.debug { "Remote->Local pipe closed: #{ex.message}" }
           ensure
-            local.close_write rescue nil
+            local.try(&.close_write) rescue nil
             done.send(nil)
           end
         end
 
+        # Pipe local -> remote
         spawn do
           begin
-            IO.copy(local, remote)
+            IO.copy(local.not_nil!, remote.not_nil!)
           rescue ex
-            Log.debug { "Error piping local -> remote: #{ex.message}" }
+            Log.debug { "Local->Remote pipe closed: #{ex.message}" }
           ensure
-            remote.close_write rescue nil
+            remote.try(&.close_write) rescue nil
             done.send(nil)
           end
         end
 
-        # Wait for both directions to finish
+        # Wait for both directions to complete
         2.times { done.receive }
+        Log.debug { "Tunnel connection closed cleanly" }
+      rescue ex : Socket::ConnectError
+        Log.error { "Tunnel error: #{ex.message}" }
       rescue ex
         Log.error { "Tunnel error: #{ex.message}" }
       ensure
-        remote.try &.close rescue nil
-        local.try &.close rescue nil
+        remote.try(&.close) rescue nil
+        local.try(&.close) rescue nil
       end
     end
   end

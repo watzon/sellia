@@ -1,14 +1,23 @@
 require "http/server"
 require "json"
+require "acme"
 require "./tunnel_manager"
 
 module Sellia
   class Server
-    def initialize(@host : String, @port : Int32, @domain : String)
+    def initialize(@host : String, @port : Int32, @domain : String, @acme_enabled : Bool = false, @acme_email : String = "admin@example.com", @acme_prod : Bool = false)
       @manager = TunnelManager.new
     end
 
     def start
+      if @acme_enabled
+        start_with_acme
+      else
+        start_without_acme
+      end
+    end
+
+    private def start_without_acme
       server = HTTP::Server.new do |context|
         handle_request(context)
       end
@@ -16,6 +25,57 @@ module Sellia
       address = server.bind_tcp(@host, @port)
       puts "Sellia Server listening on http://#{address}"
       server.listen
+    end
+
+    private def start_with_acme
+      directory = @acme_prod ? Acme::Client::LETS_ENCRYPT_PROD : Acme::Client::LETS_ENCRYPT_STAGING
+      manager = Acme::Manager.new(directory, @acme_email, [@domain, "*.#{@domain}"])
+
+      # Start HTTP Server for Challenges (Port 80)
+      spawn do
+        http_server = HTTP::Server.new([manager.handler]) do |context|
+          # Redirect to HTTPS for non-challenge requests
+          context.response.status_code = 301
+          context.response.headers["Location"] = "https://#{@domain}#{context.request.resource}"
+        end
+
+        puts "Starting ACME Challenge Server on port 80..."
+        begin
+          http_server.bind_tcp "0.0.0.0", 80
+          http_server.listen
+        rescue ex
+          puts "Error starting ACME HTTP server: #{ex.message}"
+          puts "Do you have permission to bind to port 80? (Try sudo)"
+          exit 1
+        end
+      end
+
+      # Give the server a moment to start
+      sleep 1.second
+
+      puts "Obtaining certificate for #{@domain}..."
+      begin
+        cert_pem, key_pem = manager.obtain_certificate
+        puts "Certificate obtained successfully!"
+
+        File.write("cert.pem", cert_pem)
+        File.write("key.pem", key_pem)
+
+        ssl_context = OpenSSL::SSL::Context::Server.new
+        ssl_context.certificate_chain = "cert.pem"
+        ssl_context.private_key = "key.pem"
+
+        server = HTTP::Server.new do |context|
+          handle_request(context)
+        end
+
+        address = server.bind_tls(@host, @port, ssl_context)
+        puts "Sellia Server listening on https://#{address}"
+        server.listen
+      rescue ex
+        puts "ACME Error: #{ex.message}"
+        exit 1
+      end
     end
 
     private def handle_request(context)
