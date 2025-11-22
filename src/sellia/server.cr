@@ -5,7 +5,7 @@ require "./tunnel_manager"
 
 module Sellia
   class Server
-    def initialize(@host : String, @port : Int32, @domain : String, @acme_enabled : Bool = false, @acme_email : String = "admin@example.com", @acme_prod : Bool = false)
+    def initialize(@host : String, @port : Int32, @domain : String? = nil, @acme_enabled : Bool = false, @acme_email : String = "admin@example.com", @acme_prod : Bool = false)
       @manager = TunnelManager.new
     end
 
@@ -28,8 +28,9 @@ module Sellia
     end
 
     private def start_with_acme
+      raise "Domain must be specified when using ACME" unless @domain
       directory = @acme_prod ? Acme::Client::LETS_ENCRYPT_PROD : Acme::Client::LETS_ENCRYPT_STAGING
-      manager = Acme::Manager.new(directory, @acme_email, [@domain, "*.#{@domain}"])
+      manager = Acme::Manager.new(directory, @acme_email, ["*.#{@domain}"])
 
       # Start HTTP Server for Challenges (Port 80)
       spawn do
@@ -84,10 +85,14 @@ module Sellia
       host = request.headers["Host"]?
 
       # Check if it's a request to the root domain (not a subdomain)
+      # Extract the base domain from the host header
       is_root_domain = false
+      base_domain = @domain
       if host
         clean_host = host.split(":").first
-        is_root_domain = clean_host == @domain
+        # If no domain configured, use the request host as base domain
+        base_domain ||= clean_host
+        is_root_domain = !clean_host.includes?(".") || (@domain && clean_host == @domain)
       end
 
       if is_root_domain
@@ -152,11 +157,15 @@ module Sellia
       # Create new client
       agent = @manager.new_client(subdomain)
 
+      # Build URL using request host (like localtunnel does)
+      request_host = context.request.headers["Host"]?
+      schema = context.request.headers["X-Forwarded-Proto"]? || "http"
+
       response = {
         id:             agent.client_id,
         port:           agent.port,
         max_conn_count: agent.max_sockets,
-        url:            "http://#{agent.client_id}.#{@domain}", # Assuming HTTP for now
+        url:            "#{schema}://#{agent.client_id}.#{request_host}",
       }
 
       context.response.content_type = "application/json"
@@ -171,17 +180,30 @@ module Sellia
         return
       end
 
-      # Extract subdomain
-      # host: subdomain.domain.com
+      # Extract subdomain from host
       clean_host = host.split(":").first
 
-      if clean_host == @domain
+      # Determine the base domain
+      base_domain = @domain
+      unless base_domain
+        # If no domain configured, extract it from the host
+        # Assume format: subdomain.domain.tld
+        parts = clean_host.split(".")
+        if parts.size >= 2
+          base_domain = parts[-2..-1].join(".")
+        else
+          base_domain = clean_host
+        end
+      end
+
+      if clean_host == base_domain
         context.response.print "Sellia Server"
         return
       end
 
-      if clean_host.ends_with?(".#{@domain}")
-        subdomain = clean_host[0...-(@domain.size + 1)]
+      # Extract subdomain
+      if clean_host.ends_with?(".#{base_domain}")
+        subdomain = clean_host[0...-(base_domain.size + 1)]
       else
         context.response.status_code = 404
         context.response.print "Not found"

@@ -22,7 +22,7 @@ module Sellia
   def self.run_serve
     host = "0.0.0.0"
     port = 3000
-    domain = "localhost"
+    domain : String? = nil
 
     acme_enabled = false
     acme_email = "admin@example.com"
@@ -32,7 +32,7 @@ module Sellia
       parser.banner = "Usage: sellia serve [options]"
       parser.on("--host HOST", "Host to bind to (default: 0.0.0.0)") { |h| host = h }
       parser.on("--port PORT", "Port to listen on (default: 3000)") { |p| port = p.to_i }
-      parser.on("--domain DOMAIN", "Base domain for subdomains (default: localhost)") { |d| domain = d }
+      parser.on("--domain DOMAIN", "Base domain for subdomains (optional, defaults to request Host)") { |d| domain = d }
       parser.on("--acme", "Enable ACME (Let's Encrypt) SSL") { acme_enabled = true }
       parser.on("--acme-email EMAIL", "Email for ACME registration") { |e| acme_email = e }
       parser.on("--acme-test", "Use Let's Encrypt Staging environment (for testing)") { acme_test = true }
