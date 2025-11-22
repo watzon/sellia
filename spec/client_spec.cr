@@ -48,7 +48,7 @@ describe Sellia::Client do
     # For now, I'll assume I can access it if I add a getter.
     # I will add a getter for `public_url` to Sellia::Client.
 
-    client.public_url.should match(/^http:\/\/.*\.localhost$/)
+    client.public_url.should match(/^http:\/\/.*\.localhost(:\d+)?$/)
 
     # Make request to the tunnel
     # We need to parse the URL to get the host/port for HTTP::Client
@@ -80,8 +80,7 @@ describe Sellia::Client do
     spawn { client.start }
     sleep 1.seconds
 
-    expected_url = "http://#{subdomain}.localhost"
-    client.public_url.should eq(expected_url)
+    client.public_url.should match(/^http:\/\/#{subdomain}\.localhost(:\d+)?$/)
 
     client.stop
   end

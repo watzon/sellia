@@ -221,16 +221,10 @@ module Sellia
         socket = agent.get_socket
 
         # Forward request
-        # We need to rewrite the Host header? Localtunnel client does this usually.
-        # But we are sending the request AS IS to the tunnel socket.
-        # The tunnel socket is connected to the Client's TunnelCluster.
-        # The Client receives this raw HTTP request and pipes it to the local server.
-
         context.request.to_io(socket)
         socket.flush
 
         # Read response
-        # We parse the response from the socket and write it to the context response
         client_res = HTTP::Client::Response.from_io(socket)
 
         context.response.status_code = client_res.status_code
@@ -241,10 +235,6 @@ module Sellia
         context.response.print client_res.body
 
         # Return socket to pool?
-        # No, in this simple model, the socket is consumed for one request/response cycle
-        # and then closed by the HTTP protocol usually (unless Keep-Alive).
-        # But our TunnelAgent logic assumes the socket is "given" and removed from available.
-        # If we want to support Keep-Alive on the tunnel link, we'd need to put it back.
         # For now, let's assume one-time use per connection to be safe.
         socket.close
       rescue ex

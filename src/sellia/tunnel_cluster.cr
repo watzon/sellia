@@ -5,6 +5,8 @@ module Sellia
   class TunnelCluster
     Log = ::Log.for("TunnelCluster")
 
+    @stopped : Bool = false
+
     def initialize(@remote_host : String, @remote_port : Int32, @local_port : Int32, @max_conn : Int32 = 10, @local_host : String = "localhost")
     end
 
@@ -14,6 +16,7 @@ module Sellia
       @max_conn.times do
         spawn do
           loop do
+            break if @stopped
             handle_connection
             sleep 1.seconds # Backoff on error/close
           end
@@ -41,7 +44,19 @@ module Sellia
 
         # Wait for the first data from remote (this means we have a request to proxy)
         initial_buffer = Bytes.new(4096)
-        bytes_read = remote.read(initial_buffer)
+        bytes_read = 0
+
+        # Read until we have headers or buffer is full
+        while bytes_read < 4096
+          chunk_size = remote.read(initial_buffer[bytes_read...4096])
+          break if chunk_size == 0
+          bytes_read += chunk_size
+
+          # Check if we have end of headers
+          # We can check the string representation so far
+          temp_str = String.new(initial_buffer[0, bytes_read])
+          break if temp_str.includes?("\r\n\r\n")
+        end
 
         if bytes_read == 0
           Log.debug { "Remote closed connection immediately" }
@@ -103,6 +118,10 @@ module Sellia
         remote.try(&.close) rescue nil
         local.try(&.close) rescue nil
       end
+    end
+
+    def stop
+      @stopped = true
     end
   end
 end

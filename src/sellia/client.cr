@@ -76,12 +76,7 @@ module Sellia
     end
 
     def stop
-      # We need to stop the cluster
-      # Currently TunnelCluster#start loops forever.
-      # We can't easily stop it without refactoring TunnelCluster to have a stop method or flag.
-      # For now, we'll just let it be garbage collected or killed when the spec ends,
-      # but for the test "client.stop" call, we should at least try.
-      # I'll add a placeholder or simple flag if I can edit TunnelCluster too.
+      @cluster.try &.stop
     end
   end
 end

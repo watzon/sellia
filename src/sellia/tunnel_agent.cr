@@ -59,9 +59,14 @@ module Sellia
       channel = Channel(TCPSocket).new
       @waiting_connections << channel
 
-      # TODO: Add timeout
-      socket = channel.receive
-      socket
+      # Wait for socket with timeout
+      select
+      when socket = channel.receive
+        socket
+      when timeout(5.seconds)
+        @waiting_connections.delete(channel)
+        raise "Timeout waiting for socket"
+      end
     end
 
     def close
@@ -70,7 +75,13 @@ module Sellia
       @server.try &.close
       @available_sockets.each &.close
       @available_sockets.clear
-      # TODO: Notify waiting connections
+      @available_sockets.clear
+
+      # Notify waiting connections
+      @waiting_connections.each do |channel|
+        channel.close
+      end
+      @waiting_connections.clear
     end
 
     private def accept_connections(server : TCPServer)
