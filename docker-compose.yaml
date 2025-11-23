@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # Sellia Server Service
+  sellia-server:
+    build: .
+    container_name: sellia-server
+    command: ["serve"]
+    ports:
+      - "3000:3000"  # HTTP port
+      - "80:80"      # ACME challenge port (if using SSL)
+      - "443:443"    # HTTPS port (if using SSL)
+    environment:
+      - SELLIA_HOST=0.0.0.0
+      - SELLIA_PORT=3000
+      - SELLIA_DOMAIN=${SELLIA_DOMAIN:-}  # Optional: your domain for subdomains
+      - SELLIA_ACME_ENABLED=${SELLIA_ACME_ENABLED:-false}
+      - SELLIA_ACME_EMAIL=${SELLIA_ACME_EMAIL:-admin@example.com}
+      - SELLIA_ACME_TEST=${SELLIA_ACME_TEST:-true}
+    volumes:
+      - ./certs:/app/certs  # For SSL certificates when using ACME
+    networks:
+      - sellia-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  sellia-network:
+    driver: bridge
+
+volumes:
+  certs:
+    driver: local

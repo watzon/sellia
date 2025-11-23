@@ -20,18 +20,18 @@ module Sellia
   end
 
   def self.run_serve
-    host = "0.0.0.0"
-    port = 3000
-    domain : String? = nil
+    host = ENV["SELLIA_HOST"]? || "0.0.0.0"
+    port = (ENV["SELLIA_PORT"]? || "3000").to_i
+    domain = ENV["SELLIA_DOMAIN"]?
 
-    acme_enabled = false
-    acme_email = "admin@example.com"
-    acme_test = false
+    acme_enabled = ENV["SELLIA_ACME_ENABLED"]? == "true"
+    acme_email = ENV["SELLIA_ACME_EMAIL"]? || "admin@example.com"
+    acme_test = ENV["SELLIA_ACME_TEST"]? == "true"
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: sellia serve [options]"
-      parser.on("--host HOST", "Host to bind to (default: 0.0.0.0)") { |h| host = h }
-      parser.on("--port PORT", "Port to listen on (default: 3000)") { |p| port = p.to_i }
+      parser.on("--host HOST", "Host to bind to (default: #{host})") { |h| host = h }
+      parser.on("--port PORT", "Port to listen on (default: #{port})") { |p| port = p.to_i }
       parser.on("--domain DOMAIN", "Base domain for subdomains (optional, defaults to request Host)") { |d| domain = d }
       parser.on("--acme", "Enable ACME (Let's Encrypt) SSL") { acme_enabled = true }
       parser.on("--acme-email EMAIL", "Email for ACME registration") { |e| acme_email = e }
@@ -43,19 +43,19 @@ module Sellia
   end
 
   def self.run_tunnel
-    server_host = "https://sellia.me"
-    server_port = 443
-    local_port = 3000
-    subdomain = nil
-    local_host = "localhost"
+    server_host = ENV["SELLIA_SERVER_HOST"]? || "https://sellia.me"
+    server_port = (ENV["SELLIA_SERVER_PORT"]? || "443").to_i
+    local_port = (ENV["SELLIA_LOCAL_PORT"]? || "3000").to_i
+    subdomain = ENV["SELLIA_SUBDOMAIN"]?
+    local_host = ENV["SELLIA_LOCAL_HOST"]? || "localhost"
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: sellia tunnel [options]"
-      parser.on("-h HOST", "--host HOST", "Upstream server host (default: https://sellia.me)") { |h| server_host = h }
-      parser.on("--server-port PORT", "Upstream server port (default: 443)") { |p| server_port = p.to_i }
+      parser.on("-h HOST", "--host HOST", "Upstream server host (default: #{server_host})") { |h| server_host = h }
+      parser.on("--server-port PORT", "Upstream server port (default: #{server_port})") { |p| server_port = p.to_i }
       parser.on("-p PORT", "--port PORT", "Local port to forward") { |p| local_port = p.to_i }
       parser.on("-s SUBDOMAIN", "--subdomain SUBDOMAIN", "Request this subdomain") { |s| subdomain = s }
-      parser.on("-l HOST", "--local-host HOST", "Override Host header to this value (default: localhost)") { |h| local_host = h }
+      parser.on("-l HOST", "--local-host HOST", "Override Host header to this value (default: #{local_host})") { |h| local_host = h }
       parser.on("--help", "Show this help") { puts parser; exit }
     end
 
