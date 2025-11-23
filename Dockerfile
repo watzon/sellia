@@ -3,16 +3,6 @@
 # Build stage
 FROM crystallang/crystal:1.18-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache \
-    build-base \
-    libxml2-dev \
-    libyaml-dev \
-    openssl-dev \
-    zlib-dev \
-    pcre-dev \
-    git
-
 WORKDIR /app
 
 # Copy shard files and install dependencies
@@ -51,4 +41,4 @@ USER sellia
 EXPOSE 3000 80 443
 
 # Set default command
-CMD ["sellia"]
+CMD ["sellia", "serve"]

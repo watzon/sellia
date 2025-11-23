@@ -1,6 +1,6 @@
 version: 2.0
 shards:
   acme:
-    path: ../acme
-    version: 0.1.0
+    git: https://github.com/watzon/acme.cr.git
+    version: 0.1.0+git.commit.93a2fb739eedf54b50c8dc7b5cb3efe2d5448402
 
