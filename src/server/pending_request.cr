@@ -30,8 +30,16 @@ module Sellia::Server
     end
 
     def finish
-      @context.response.close
-      @channel.send(nil)
+      begin
+        @context.response.close
+      rescue
+        # Response may already be closed
+      end
+      begin
+        @channel.send(nil)
+      rescue Channel::ClosedError
+        # Channel may already be closed
+      end
     end
 
     def wait(timeout : Time::Span = 30.seconds) : Bool
@@ -44,11 +52,22 @@ module Sellia::Server
     end
 
     def error(status : Int32, message : String)
-      @context.response.status_code = status
-      @context.response.content_type = "text/plain"
-      @context.response.print(message)
-      @context.response.close
-      @channel.send(nil)
+      # Only set status/headers if response hasn't started yet
+      unless @response_started
+        @context.response.status_code = status
+        @context.response.content_type = "text/plain"
+        @context.response.print(message)
+      end
+      begin
+        @context.response.close
+      rescue
+        # Response may already be closed
+      end
+      begin
+        @channel.send(nil)
+      rescue Channel::ClosedError
+        # Channel may already be closed
+      end
     end
   end
 

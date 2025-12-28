@@ -213,8 +213,11 @@ module Sellia::Server
       # Wait for response with timeout
       unless pending.wait(@request_timeout)
         @pending_requests.remove(request_id)
-        context.response.status_code = 504
-        context.response.print("Gateway timeout - no response from tunnel")
+        # Only set status if headers haven't been sent yet
+        unless pending.response_started
+          context.response.status_code = 504
+          context.response.print("Gateway timeout - no response from tunnel")
+        end
         return
       end
 
