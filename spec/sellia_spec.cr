@@ -1,9 +1,8 @@
 require "./spec_helper"
 
 describe Sellia do
-  # TODO: Write tests
-
-  it "works" do
-    false.should eq(true)
+  it "has version constant" do
+    Sellia::VERSION.should_not be_nil
+    Sellia::VERSION.should be_a(String)
   end
 end
