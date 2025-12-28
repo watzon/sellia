@@ -156,9 +156,9 @@ module Sellia::Server
       @tunnel_registry.register(tunnel)
 
       # Build public URL
+      # When use_https is true, we're behind a reverse proxy - don't append internal port
       protocol = @use_https ? "https" : "http"
-      default_port = @use_https ? 443 : 80
-      port_suffix = @port == default_port ? "" : ":#{@port}"
+      port_suffix = @use_https ? "" : (@port == 80 ? "" : ":#{@port}")
       url = "#{protocol}://#{subdomain}.#{@domain}#{port_suffix}"
 
       client.send(Protocol::Messages::TunnelReady.new(

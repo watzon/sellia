@@ -6,7 +6,7 @@
 
 services:
   sellia-server:
-    # Don't expose port directly - Caddy handles external traffic
+    image: ghcr.io/watzon/sellia:latest
     ports: []
     networks:
       - sellia-internal
@@ -21,7 +21,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"  # HTTP/3
+      - "443:443/udp" # HTTP/3
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

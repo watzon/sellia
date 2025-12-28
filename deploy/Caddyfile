@@ -1,14 +1,23 @@
-# Sellia Caddyfile - Automatic HTTPS with Let's Encrypt
+# Sellia Caddyfile - Automatic HTTPS with On-Demand TLS
 #
-# Replace YOUR_DOMAIN with your actual domain (e.g., sellia.me)
-# Caddy automatically obtains and renews SSL certificates
+# On-demand TLS obtains certificates for each subdomain as they're accessed.
+# This avoids the DNS-01 challenge required for wildcard certificates.
 #
-# For wildcard certificates, you need DNS challenge:
-#   https://caddyserver.com/docs/automatic-https#dns-challenge
+# Rate limiting prevents abuse of certificate issuance.
 
-# Main domain and wildcard subdomains
-*.YOUR_DOMAIN, YOUR_DOMAIN {
-    # Reverse proxy to Sellia server
+{
+    on_demand_tls {
+        interval 1m
+        burst 10
+    }
+}
+
+# Catch-all HTTPS handler for all subdomains
+https:// {
+    tls {
+        on_demand
+    }
+
     reverse_proxy sellia-server:3000 {
         # WebSocket support for tunnel connections
         header_up Host {host}
@@ -16,24 +25,14 @@
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
 
-        # Flush immediately for WebSocket
+        # Flush immediately for WebSocket/SSE
         flush_interval -1
     }
 
-    # Optional: Enable logging
     log {
         output file /var/log/caddy/sellia.log
         format json
     }
-
-    # Optional: Rate limiting (requires caddy-ratelimit plugin)
-    # rate_limit {
-    #     zone dynamic_zone {
-    #         key {remote_host}
-    #         events 100
-    #         window 1m
-    #     }
-    # }
 }
 
 # Health check endpoint for load balancers (optional)
