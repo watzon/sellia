@@ -1,35 +1,66 @@
 require "http/web_socket"
+require "log"
 require "./client_connection"
 require "./connection_manager"
 require "./tunnel_registry"
 require "./auth_provider"
 require "./pending_request"
+require "./rate_limiter"
 require "../core/protocol"
 
 module Sellia::Server
   class WSGateway
+    Log = ::Log.for("sellia.server.ws")
     property connection_manager : ConnectionManager
     property tunnel_registry : TunnelRegistry
     property auth_provider : AuthProvider
     property pending_requests : PendingRequestStore
+    property rate_limiter : CompositeRateLimiter
     property domain : String
     property use_https : Bool
+
+    PING_INTERVAL  = 30.seconds
+    PING_TIMEOUT   = 60.seconds
 
     def initialize(
       @connection_manager : ConnectionManager,
       @tunnel_registry : TunnelRegistry,
       @auth_provider : AuthProvider,
       @pending_requests : PendingRequestStore,
+      @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @use_https : Bool = false
     )
+      spawn_heartbeat_loop
+    end
+
+    private def spawn_heartbeat_loop
+      spawn do
+        loop do
+          sleep PING_INTERVAL
+          check_connections
+        end
+      end
+    end
+
+    private def check_connections
+      @connection_manager.each do |client|
+        if client.stale?(PING_TIMEOUT)
+          Log.warn { "Client #{client.id} timed out (no activity for #{PING_TIMEOUT})" }
+          client.close("Connection timeout")
+          handle_disconnect(client)
+        else
+          # Send ping to keep connection alive and detect stale connections
+          client.ping
+        end
+      end
     end
 
     def handle(socket : HTTP::WebSocket)
       client = ClientConnection.new(socket)
       @connection_manager.add_connection(client)
 
-      puts "[WS] Client connected: #{client.id}"
+      Log.debug { "Client connected: #{client.id}" }
 
       client.on_message do |message|
         handle_message(client, message)
@@ -72,7 +103,7 @@ module Sellia::Server
           limits: {"max_tunnels" => 10_i64, "max_connections" => 100_i64}
         ))
 
-        puts "[WS] Client authenticated: #{client.id}"
+        Log.debug { "Client authenticated: #{client.id}" }
       else
         client.send(Protocol::Messages::AuthError.new("Invalid API key"))
         client.close("Authentication failed")
@@ -86,16 +117,29 @@ module Sellia::Server
         return
       end
 
+      # Check rate limit for tunnel creation
+      unless @rate_limiter.allow_tunnel?(client.id)
+        client.send(Protocol::Messages::TunnelClose.new(
+          tunnel_id: "",
+          reason: "Rate limit exceeded: too many tunnel creations"
+        ))
+        return
+      end
+
       # Determine subdomain
       subdomain = message.subdomain
       if subdomain.nil? || subdomain.empty?
         subdomain = @tunnel_registry.generate_subdomain
-      elsif !@tunnel_registry.subdomain_available?(subdomain)
-        client.send(Protocol::Messages::TunnelClose.new(
-          tunnel_id: "",
-          reason: "Subdomain '#{subdomain}' is not available"
-        ))
-        return
+      else
+        # Validate the requested subdomain
+        validation = @tunnel_registry.validate_subdomain(subdomain)
+        unless validation.valid
+          client.send(Protocol::Messages::TunnelClose.new(
+            tunnel_id: "",
+            reason: validation.error || "Invalid subdomain"
+          ))
+          return
+        end
       end
 
       # Create tunnel
@@ -119,14 +163,14 @@ module Sellia::Server
         subdomain: subdomain
       ))
 
-      puts "[WS] Tunnel opened: #{subdomain}.#{@domain} -> client #{client.id}"
+      Log.info { "Tunnel opened: #{subdomain}.#{@domain} -> client #{client.id}" }
     end
 
     private def handle_tunnel_close(client : ClientConnection, message : Protocol::Messages::TunnelClose)
       if tunnel = @tunnel_registry.find_by_id(message.tunnel_id)
         if tunnel.client_id == client.id
           @tunnel_registry.unregister(message.tunnel_id)
-          puts "[WS] Tunnel closed: #{tunnel.subdomain}"
+          Log.info { "Tunnel closed: #{tunnel.subdomain}" }
         end
       end
     end
@@ -150,13 +194,23 @@ module Sellia::Server
     end
 
     private def handle_disconnect(client : ClientConnection)
-      puts "[WS] Client disconnected: #{client.id}"
+      Log.debug { "Client disconnected: #{client.id}" }
 
       # Remove all tunnels for this client
       tunnels = @tunnel_registry.unregister_client(client.id)
       tunnels.each do |tunnel|
-        puts "[WS] Tunnel removed: #{tunnel.subdomain}"
+        Log.info { "Tunnel removed: #{tunnel.subdomain}" }
+
+        # Clean up any pending requests for this tunnel
+        removed = @pending_requests.remove_by_tunnel(tunnel.id)
+        Log.debug { "Cleaned up #{removed} pending requests" } if removed > 0
+
+        # Reset rate limits for this tunnel
+        @rate_limiter.reset_tunnel(tunnel.id)
       end
+
+      # Reset rate limits for this client
+      @rate_limiter.reset_client(client.id)
 
       @connection_manager.unregister(client.id)
     end

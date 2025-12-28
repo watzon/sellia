@@ -153,6 +153,77 @@ describe Sellia::Server::TunnelRegistry do
     end
   end
 
+  describe "#validate_subdomain" do
+    it "accepts valid subdomains" do
+      registry = Sellia::Server::TunnelRegistry.new
+
+      %w[myapp my-app app123 a1b2c3 abc].each do |subdomain|
+        result = registry.validate_subdomain(subdomain)
+        result.valid.should be_true, "Expected '#{subdomain}' to be valid"
+      end
+    end
+
+    it "rejects subdomains that are too short" do
+      registry = Sellia::Server::TunnelRegistry.new
+      result = registry.validate_subdomain("ab")
+      result.valid.should be_false
+      result.error.not_nil!.should contain("at least 3 characters")
+    end
+
+    it "rejects subdomains that are too long" do
+      registry = Sellia::Server::TunnelRegistry.new
+      long_name = "a" * 64
+      result = registry.validate_subdomain(long_name)
+      result.valid.should be_false
+      result.error.not_nil!.should contain("at most 63 characters")
+    end
+
+    it "rejects subdomains starting with hyphen" do
+      registry = Sellia::Server::TunnelRegistry.new
+      result = registry.validate_subdomain("-myapp")
+      result.valid.should be_false
+      result.error.not_nil!.should contain("hyphen")
+    end
+
+    it "rejects subdomains ending with hyphen" do
+      registry = Sellia::Server::TunnelRegistry.new
+      result = registry.validate_subdomain("myapp-")
+      result.valid.should be_false
+      result.error.not_nil!.should contain("hyphen")
+    end
+
+    it "rejects subdomains with invalid characters" do
+      registry = Sellia::Server::TunnelRegistry.new
+      %w[my_app my.app my@app my!app my\ app].each do |subdomain|
+        result = registry.validate_subdomain(subdomain)
+        result.valid.should be_false, "Expected '#{subdomain}' to be invalid"
+      end
+    end
+
+    it "rejects reserved subdomains" do
+      registry = Sellia::Server::TunnelRegistry.new
+      %w[api www admin dashboard auth login].each do |subdomain|
+        result = registry.validate_subdomain(subdomain)
+        result.valid.should be_false, "Expected '#{subdomain}' to be reserved"
+        result.error.not_nil!.should contain("reserved")
+      end
+    end
+
+    it "rejects already taken subdomains" do
+      registry = Sellia::Server::TunnelRegistry.new
+      tunnel = Sellia::Server::TunnelRegistry::Tunnel.new(
+        id: "tun-123",
+        subdomain: "myapp",
+        client_id: "client-456"
+      )
+      registry.register(tunnel)
+
+      result = registry.validate_subdomain("myapp")
+      result.valid.should be_false
+      result.error.not_nil!.should contain("not available")
+    end
+  end
+
   describe "Tunnel struct" do
     it "stores auth when provided" do
       tunnel = Sellia::Server::TunnelRegistry::Tunnel.new(

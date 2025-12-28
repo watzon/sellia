@@ -48,7 +48,7 @@ describe "End-to-end tunnel integration" do
       client = Sellia::CLI::TunnelClient.new(
         server_url: "http://127.0.0.1:#{server_port}",
         local_port: local_port,
-        subdomain: "test"
+        subdomain: "testapp"
       )
       client.auto_reconnect = false
 
@@ -67,7 +67,7 @@ describe "End-to-end tunnel integration" do
       # Make a request through the tunnel
       http_client = HTTP::Client.new("127.0.0.1", server_port)
       http_client.before_request do |request|
-        request.headers["Host"] = "test.127.0.0.1:#{server_port}"
+        request.headers["Host"] = "testapp.127.0.0.1:#{server_port}"
       end
 
       response = http_client.get("/")

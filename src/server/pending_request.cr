@@ -53,9 +53,10 @@ module Sellia::Server
   end
 
   class PendingRequestStore
-    def initialize
+    def initialize(@request_timeout : Time::Span = 30.seconds)
       @requests = {} of String => PendingRequest
       @mutex = Mutex.new
+      spawn_cleanup_loop
     end
 
     def add(request : PendingRequest)
@@ -70,8 +71,57 @@ module Sellia::Server
       @mutex.synchronize { @requests.delete(id) }
     end
 
+    # Remove all pending requests for a tunnel and send 502 error
+    def remove_by_tunnel(tunnel_id : String) : Int32
+      @mutex.synchronize do
+        removed = 0
+        @requests.reject! do |_, request|
+          if request.tunnel_id == tunnel_id
+            # Signal error to waiting handler
+            spawn { request.error(502, "Tunnel disconnected") }
+            removed += 1
+            true
+          else
+            false
+          end
+        end
+        removed
+      end
+    end
+
     def size : Int32
       @mutex.synchronize { @requests.size }
+    end
+
+    private def spawn_cleanup_loop
+      spawn do
+        loop do
+          sleep 10.seconds
+          cleanup_stale_requests
+        end
+      end
+    end
+
+    # Clean up requests that have exceeded their timeout
+    private def cleanup_stale_requests
+      @mutex.synchronize do
+        cutoff = Time.utc - @request_timeout - 5.seconds
+        @requests.reject! do |_, request|
+          if request.created_at < cutoff
+            # Signal timeout to waiting handler (they may already be gone)
+            spawn do
+              begin
+                request.error(504, "Gateway timeout (cleanup)")
+              rescue
+                # Response may already be closed
+              end
+            end
+            true
+          else
+            false
+          end
+        end
+      end
     end
   end
 end

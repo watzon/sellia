@@ -1,26 +1,31 @@
 require "http/server"
 require "option_parser"
+require "log"
 require "./tunnel_registry"
 require "./connection_manager"
 require "./pending_request"
 require "./auth_provider"
+require "./rate_limiter"
 require "./ws_gateway"
 require "./http_ingress"
 require "../core/version"
 
 module Sellia::Server
   class Server
+    Log = ::Log.for("sellia.server")
     property host : String
     property port : Int32
     property domain : String
     property require_auth : Bool
     property master_key : String?
     property use_https : Bool
+    property rate_limiting : Bool
 
     @tunnel_registry : TunnelRegistry
     @connection_manager : ConnectionManager
     @pending_requests : PendingRequestStore
     @auth_provider : AuthProvider
+    @rate_limiter : CompositeRateLimiter
     @ws_gateway : WSGateway
     @http_ingress : HTTPIngress
     @server : HTTP::Server?
@@ -32,18 +37,21 @@ module Sellia::Server
       @domain : String = "localhost",
       @require_auth : Bool = false,
       @master_key : String? = nil,
-      @use_https : Bool = false
+      @use_https : Bool = false,
+      @rate_limiting : Bool = true
     )
       @tunnel_registry = TunnelRegistry.new
       @connection_manager = ConnectionManager.new
       @pending_requests = PendingRequestStore.new
       @auth_provider = AuthProvider.new(@require_auth, @master_key)
+      @rate_limiter = CompositeRateLimiter.new(enabled: @rate_limiting)
 
       @ws_gateway = WSGateway.new(
         connection_manager: @connection_manager,
         tunnel_registry: @tunnel_registry,
         auth_provider: @auth_provider,
         pending_requests: @pending_requests,
+        rate_limiter: @rate_limiter,
         domain: @domain,
         use_https: @use_https
       )
@@ -52,6 +60,7 @@ module Sellia::Server
         tunnel_registry: @tunnel_registry,
         connection_manager: @connection_manager,
         pending_requests: @pending_requests,
+        rate_limiter: @rate_limiter,
         domain: @domain
       )
     end
@@ -68,12 +77,12 @@ module Sellia::Server
       setup_signal_handlers(server)
 
       address = server.bind_tcp(@host, @port)
-      puts "Sellia Server v#{Sellia::VERSION}"
-      puts "Listening on http://#{address}"
-      puts "Domain: #{@domain}"
-      puts "Auth required: #{@require_auth}"
-      puts ""
-      puts "Press Ctrl+C to stop"
+
+      Log.info { "Sellia Server v#{Sellia::VERSION}" }
+      Log.info { "Listening on http://#{address}" }
+      Log.info { "Domain: #{@domain}" }
+      Log.info { "Auth required: #{@require_auth}" }
+      Log.info { "Rate limiting: #{@rate_limiting}" }
 
       server.listen
     end
@@ -107,7 +116,7 @@ module Sellia::Server
       return unless @running
       @running = false
 
-      puts "\nShutting down..."
+      Log.info { "Shutting down..." }
       server.close
       exit 0
     end
@@ -121,6 +130,7 @@ module Sellia::Server
     require_auth = ENV["SELLIA_REQUIRE_AUTH"]? == "true"
     master_key = ENV["SELLIA_MASTER_KEY"]?
     use_https = ENV["SELLIA_USE_HTTPS"]? == "true"
+    rate_limiting = ENV["SELLIA_RATE_LIMITING"]? != "false"
 
     # Parse command-line options (override env vars)
     OptionParser.parse do |parser|
@@ -135,6 +145,7 @@ module Sellia::Server
         require_auth = true
       end
       parser.on("--https", "Generate HTTPS URLs for tunnels") { use_https = true }
+      parser.on("--no-rate-limit", "Disable rate limiting") { rate_limiting = false }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -157,7 +168,8 @@ module Sellia::Server
       domain: domain,
       require_auth: require_auth,
       master_key: master_key,
-      use_https: use_https
+      use_https: use_https,
+      rate_limiting: rate_limiting
     ).start
   end
 end

@@ -66,5 +66,16 @@ module Sellia::Server
         end
       end
     end
+
+    # Iterate over all connections (returns a copy to avoid holding lock)
+    def each(&block : ClientConnection -> Nil)
+      connections = @mutex.synchronize { @connections.values.dup }
+      connections.each(&block)
+    end
+
+    # Get all connection IDs
+    def connection_ids : Array(String)
+      @mutex.synchronize { @connections.keys.dup }
+    end
   end
 end

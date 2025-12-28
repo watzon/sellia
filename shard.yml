@@ -10,8 +10,6 @@ crystal: ">= 1.10.0"
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
-  sqlite3:
-    github: crystal-lang/crystal-sqlite3
 
 targets:
   sellia:
@@ -19,6 +17,3 @@ targets:
   sellia-server:
     main: src/server/main.cr
 
-development_dependencies:
-  spectator:
-    github: icy-arctic-fox/spectator

@@ -2,6 +2,32 @@ require "mutex"
 
 module Sellia::Server
   class TunnelRegistry
+    # Reserved subdomains that cannot be claimed
+    @@reserved_subdomains = Set{
+      "api", "www", "admin", "app", "dashboard", "console",
+      "mail", "smtp", "imap", "pop", "ftp", "ssh", "sftp",
+      "cdn", "static", "assets", "media", "images", "files",
+      "auth", "login", "oauth", "sso", "account", "accounts",
+      "billing", "pay", "payment", "payments", "subscribe",
+      "help", "support", "docs", "documentation", "status",
+      "blog", "news", "forum", "community", "dev", "developer",
+      "test", "staging", "demo", "sandbox", "preview",
+      "ws", "wss", "socket", "websocket", "stream",
+      "git", "svn", "repo", "registry", "npm", "pypi",
+      "internal", "private", "public", "local", "localhost",
+      "root", "system", "server", "servers", "node", "nodes",
+      "sellia", "tunnel", "tunnels", "proxy",
+    }
+
+    # Validation result
+    struct ValidationResult
+      property valid : Bool
+      property error : String?
+
+      def initialize(@valid : Bool, @error : String? = nil)
+      end
+    end
+
     struct Tunnel
       property id : String
       property subdomain : String
@@ -60,6 +86,42 @@ module Sellia::Server
 
     def subdomain_available?(subdomain : String) : Bool
       @mutex.synchronize { !@by_subdomain.has_key?(subdomain) }
+    end
+
+    # Validate subdomain according to DNS label rules and security constraints
+    def validate_subdomain(subdomain : String) : ValidationResult
+      # Length check (DNS label: 1-63 chars, we require 3+ for usability)
+      if subdomain.size < 3
+        return ValidationResult.new(false, "Subdomain must be at least 3 characters")
+      end
+
+      if subdomain.size > 63
+        return ValidationResult.new(false, "Subdomain must be at most 63 characters")
+      end
+
+      # Character validation (alphanumeric and hyphens only)
+      unless subdomain.matches?(/\A[a-z0-9][a-z0-9-]*[a-z0-9]\z/i) || subdomain.matches?(/\A[a-z0-9]{3}\z/i)
+        if subdomain.starts_with?("-") || subdomain.ends_with?("-")
+          return ValidationResult.new(false, "Subdomain cannot start or end with a hyphen")
+        end
+        if subdomain.includes?("--")
+          return ValidationResult.new(false, "Subdomain cannot contain consecutive hyphens")
+        end
+        return ValidationResult.new(false, "Subdomain can only contain lowercase letters, numbers, and hyphens")
+      end
+
+      # Reserved names check
+      normalized = subdomain.downcase
+      if @@reserved_subdomains.includes?(normalized)
+        return ValidationResult.new(false, "Subdomain '#{subdomain}' is reserved")
+      end
+
+      # Check availability
+      unless subdomain_available?(subdomain)
+        return ValidationResult.new(false, "Subdomain '#{subdomain}' is not available")
+      end
+
+      ValidationResult.new(true)
     end
 
     def generate_subdomain : String

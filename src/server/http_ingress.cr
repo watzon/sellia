@@ -3,6 +3,7 @@ require "base64"
 require "./tunnel_registry"
 require "./connection_manager"
 require "./pending_request"
+require "./rate_limiter"
 require "../core/protocol"
 
 module Sellia::Server
@@ -10,6 +11,7 @@ module Sellia::Server
     property tunnel_registry : TunnelRegistry
     property connection_manager : ConnectionManager
     property pending_requests : PendingRequestStore
+    property rate_limiter : CompositeRateLimiter
     property domain : String
     property request_timeout : Time::Span
 
@@ -17,6 +19,7 @@ module Sellia::Server
       @tunnel_registry : TunnelRegistry,
       @connection_manager : ConnectionManager,
       @pending_requests : PendingRequestStore,
+      @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @request_timeout : Time::Span = 30.seconds
     )
@@ -60,6 +63,15 @@ module Sellia::Server
           context.response.print("Unauthorized")
           return
         end
+      end
+
+      # Check rate limit for this tunnel
+      unless @rate_limiter.allow_request?(tunnel.id)
+        context.response.status_code = 429
+        context.response.content_type = "text/plain"
+        context.response.headers["Retry-After"] = "1"
+        context.response.print("Rate limit exceeded")
+        return
       end
 
       # Find client connection
