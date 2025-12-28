@@ -2,11 +2,8 @@
 #
 # Usage: docker compose -f docker-compose.prod.yml up -d
 #
-# TLS Modes:
-#   1. Cloudflare DNS (recommended): Set CLOUDFLARE_API_TOKEN in .env
-#      - Instant wildcard cert, no delay on first request
-#   2. On-Demand TLS (fallback): No Cloudflare token needed
-#      - First request to new subdomain takes ~5-10s for cert
+# Requires CLOUDFLARE_API_TOKEN in .env for wildcard TLS certificates.
+# See README.md for setup instructions.
 
 services:
   sellia-server:
