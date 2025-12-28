@@ -28,6 +28,7 @@ module Sellia::Server
 
       unless host
         context.response.status_code = 400
+        context.response.content_type = "text/plain"
         context.response.print("Missing Host header")
         return
       end
@@ -66,6 +67,7 @@ module Sellia::Server
 
       unless client
         context.response.status_code = 502
+        context.response.content_type = "text/plain"
         context.response.print("Tunnel client disconnected")
         return
       end
