@@ -1,0 +1,36 @@
+# Sellia Caddyfile - On-Demand TLS (Fallback)
+#
+# Obtains certificates for each subdomain as they're accessed.
+# First request to a new subdomain takes ~5-10 seconds for cert.
+#
+# No external dependencies required - works out of the box.
+# For faster first requests, use Caddyfile.cloudflare instead.
+
+{
+	on_demand_tls {
+		ask http://sellia-server:3000/tunnel/verify
+	}
+}
+
+# Catch-all HTTPS handler for all subdomains
+https:// {
+	tls {
+		on_demand
+	}
+
+	reverse_proxy sellia-server:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		flush_interval -1
+	}
+
+	log {
+		output file /var/log/caddy/sellia.log
+		format json
+	}
+}
+
+# Health check endpoint for load balancers
+:8080 {
+	respond /health 200
+}

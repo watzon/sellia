@@ -25,15 +25,12 @@ services:
     image: ghcr.io/caddybuilds/caddy-cloudflare:alpine
     container_name: sellia-caddy
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "/etc/caddy/entrypoint.sh"]
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp" # HTTP/3
     volumes:
-      - ./deploy/caddy-entrypoint.sh:/etc/caddy/entrypoint.sh:ro
-      - ./deploy/Caddyfile.cloudflare:/etc/caddy/Caddyfile.cloudflare:ro
-      - ./deploy/Caddyfile.ondemand:/etc/caddy/Caddyfile.ondemand:ro
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
