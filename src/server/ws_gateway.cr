@@ -3,6 +3,7 @@ require "./client_connection"
 require "./connection_manager"
 require "./tunnel_registry"
 require "./auth_provider"
+require "./pending_request"
 require "../core/protocol"
 
 module Sellia::Server
@@ -10,6 +11,7 @@ module Sellia::Server
     property connection_manager : ConnectionManager
     property tunnel_registry : TunnelRegistry
     property auth_provider : AuthProvider
+    property pending_requests : PendingRequestStore
     property domain : String
     property use_https : Bool
 
@@ -17,6 +19,7 @@ module Sellia::Server
       @connection_manager : ConnectionManager,
       @tunnel_registry : TunnelRegistry,
       @auth_provider : AuthProvider,
+      @pending_requests : PendingRequestStore,
       @domain : String = "localhost",
       @use_https : Bool = false
     )
@@ -128,16 +131,21 @@ module Sellia::Server
     end
 
     private def handle_response_start(client : ClientConnection, message : Protocol::Messages::ResponseStart)
-      # Forward to pending request handler (implemented in HTTP ingress - Task 6)
-      # This is a stub - actual implementation connects to request tracking
+      if pending = @pending_requests.get(message.request_id)
+        pending.start_response(message.status_code, message.headers)
+      end
     end
 
     private def handle_response_body(client : ClientConnection, message : Protocol::Messages::ResponseBody)
-      # Forward body chunk to pending request (implemented in HTTP ingress - Task 6)
+      if pending = @pending_requests.get(message.request_id)
+        pending.write_body(message.chunk) unless message.chunk.empty?
+      end
     end
 
     private def handle_response_end(client : ClientConnection, message : Protocol::Messages::ResponseEnd)
-      # Complete the pending request (implemented in HTTP ingress - Task 6)
+      if pending = @pending_requests.get(message.request_id)
+        pending.finish
+      end
     end
 
     private def handle_disconnect(client : ClientConnection)
