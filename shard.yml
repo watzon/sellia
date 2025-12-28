@@ -10,6 +10,8 @@ crystal: ">= 1.10.0"
 dependencies:
   msgpack:
     github: crystal-community/msgpack-crystal
+  baked_file_system:
+    github: schovi/baked_file_system
 
 targets:
   sellia:

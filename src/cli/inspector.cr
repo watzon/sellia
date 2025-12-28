@@ -5,7 +5,21 @@ require "json"
 require "log"
 require "./request_store"
 
+{% unless flag?(:release) %}
+  # Development mode - no baked assets needed
+{% else %}
+  require "baked_file_system"
+{% end %}
+
 module Sellia::CLI
+  {% if flag?(:release) %}
+    # Baked assets for production builds
+    class InspectorAssets
+      extend BakedFileSystem
+      bake_folder "../../web/dist", __DIR__
+    end
+  {% end %}
+
   # The Inspector provides a web UI for viewing tunneled HTTP requests in real-time.
   # It serves the React UI and provides WebSocket and REST endpoints for request data.
   class Inspector
@@ -75,11 +89,10 @@ module Sellia::CLI
         handle_clear_api(context)
 
       when "/"
-        serve_index(context)
+        serve_file(context, "/index.html")
 
       else
-        # Serve static assets
-        serve_static(context, path)
+        serve_file(context, path)
       end
     end
 
@@ -110,7 +123,7 @@ module Sellia::CLI
           begin
             select
             when request = channel.receive?
-              break if request.nil?  # Channel was closed
+              break if request.nil? # Channel was closed
               message = {type: "request", request: request}.to_json
               socket.send(message)
             when timeout(1.second)
@@ -150,72 +163,71 @@ module Sellia::CLI
       end
     end
 
-    private def serve_index(context : HTTP::Server::Context)
-      {% if flag?(:embed_assets) %}
-        serve_embedded_index(context)
-      {% else %}
-        proxy_to_vite(context, "/")
-      {% end %}
-    end
-
-    private def serve_static(context : HTTP::Server::Context, path : String)
-      {% if flag?(:embed_assets) %}
-        serve_embedded_asset(context, path)
+    private def serve_file(context : HTTP::Server::Context, path : String)
+      {% if flag?(:release) %}
+        serve_baked_file(context, path)
       {% else %}
         proxy_to_vite(context, path)
       {% end %}
     end
 
-    {% if flag?(:embed_assets) %}
-      # Embedded assets for production builds
-      EMBEDDED_INDEX = {{ read_file("#{__DIR__}/../../web/dist/index.html") }}
+    {% if flag?(:release) %}
+      private def serve_baked_file(context : HTTP::Server::Context, path : String)
+        # Try to get the file from baked assets
+        file = InspectorAssets.get?(path)
 
-      # Read all assets from the dist/assets directory at compile time
-      {% assets_dir = "#{__DIR__}/../../web/dist/assets" %}
-      {% asset_files = `ls #{assets_dir.id} 2>/dev/null`.strip.split("\n") %}
+        # If not found and not already index.html, try index.html (SPA fallback)
+        if file.nil? && path != "/index.html" && !path.starts_with?("/assets/")
+          file = InspectorAssets.get?("/index.html")
+        end
 
-      EMBEDDED_ASSETS = {
-        {% for file in asset_files %}
-          {% if file.size > 0 %}
-            "/assets/{{ file.id }}" => {{ read_file("#{assets_dir.id}/#{file.id}") }},
-          {% end %}
-        {% end %}
-      } of String => String
+        if file
+          content_type = mime_type_for(path)
+          context.response.content_type = content_type
 
-      private def serve_embedded_index(context : HTTP::Server::Context)
-        context.response.content_type = "text/html; charset=utf-8"
-        context.response.print(EMBEDDED_INDEX)
-      end
-
-      private def serve_embedded_asset(context : HTTP::Server::Context, path : String)
-        if content = EMBEDDED_ASSETS[path]?
-          # Determine content type from extension
-          content_type = case path
-          when .ends_with?(".js")
-            "application/javascript; charset=utf-8"
-          when .ends_with?(".css")
-            "text/css; charset=utf-8"
-          when .ends_with?(".svg")
-            "image/svg+xml"
-          when .ends_with?(".png")
-            "image/png"
-          when .ends_with?(".jpg"), .ends_with?(".jpeg")
-            "image/jpeg"
-          when .ends_with?(".woff"), .ends_with?(".woff2")
-            "font/woff2"
-          when .ends_with?(".json")
-            "application/json"
-          else
-            "application/octet-stream"
+          # Cache static assets aggressively
+          if path.starts_with?("/assets/")
+            context.response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
           end
 
-          context.response.content_type = content_type
-          context.response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-          context.response.print(content)
+          context.response.print(file.gets_to_end)
         else
           context.response.status_code = 404
           context.response.content_type = "text/plain"
           context.response.print("Not found: #{path}")
+        end
+      end
+
+      private def mime_type_for(path : String) : String
+        case path
+        when .ends_with?(".html")
+          "text/html; charset=utf-8"
+        when .ends_with?(".js")
+          "application/javascript; charset=utf-8"
+        when .ends_with?(".css")
+          "text/css; charset=utf-8"
+        when .ends_with?(".svg")
+          "image/svg+xml"
+        when .ends_with?(".png")
+          "image/png"
+        when .ends_with?(".jpg"), .ends_with?(".jpeg")
+          "image/jpeg"
+        when .ends_with?(".gif")
+          "image/gif"
+        when .ends_with?(".ico")
+          "image/x-icon"
+        when .ends_with?(".woff")
+          "font/woff"
+        when .ends_with?(".woff2")
+          "font/woff2"
+        when .ends_with?(".ttf")
+          "font/ttf"
+        when .ends_with?(".json")
+          "application/json"
+        when .ends_with?(".map")
+          "application/json"
+        else
+          "application/octet-stream"
         end
       end
     {% else %}
@@ -295,7 +307,7 @@ module Sellia::CLI
             <p>Start the Vite development server:</p>
             <code>cd web && npm run dev</code>
             <p>Or build for production:</p>
-            <code>just build</code>
+            <code>shards build --release</code>
           </div>
         </body>
         </html>
