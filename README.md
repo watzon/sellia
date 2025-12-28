@@ -212,23 +212,19 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### TLS Configuration
 
-Sellia supports two TLS modes:
+Sellia automatically selects TLS mode based on environment:
 
 #### Cloudflare DNS (Recommended)
 
-Uses wildcard certificates - instant HTTPS for all subdomains:
+If `CLOUDFLARE_API_TOKEN` is set, uses wildcard certificates for instant HTTPS:
 
 1. Create a [Cloudflare API token](https://dash.cloudflare.com/profile/api-tokens) with `Zone:DNS:Edit` permission
 2. Add to `.env`: `CLOUDFLARE_API_TOKEN=your-token-here`
-3. Copy the Cloudflare Caddyfile: `cp deploy/Caddyfile.cloudflare deploy/Caddyfile`
-4. Restart: `docker compose -f docker-compose.prod.yml up -d`
+3. Restart: `docker compose -f docker-compose.prod.yml up -d`
 
 #### On-Demand TLS (Default)
 
-Certificates obtained per-subdomain on first request (~5-10s delay):
-
-- Works out of the box, no additional configuration needed
-- Uses `deploy/Caddyfile.ondemand` (default)
+If no Cloudflare token is set, certificates are obtained per-subdomain on first request (~5-10s delay). Works out of the box with no additional configuration.
 
 ## Development
 
