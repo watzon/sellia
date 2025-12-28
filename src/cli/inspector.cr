@@ -101,24 +101,33 @@ module Sellia::CLI
       Log.debug { "WebSocket client connected to inspector" }
 
       channel = @store.subscribe
+      closed = Atomic(Bool).new(false)
 
       # Send updates to WebSocket client
       spawn do
         loop do
-          select
-          when request = channel.receive
-            begin
+          break if closed.get
+          begin
+            select
+            when request = channel.receive?
+              break if request.nil?  # Channel was closed
               message = {type: "request", request: request}.to_json
               socket.send(message)
-            rescue
-              break
+            when timeout(1.second)
+              # Check if we should exit
+              next
             end
+          rescue Channel::ClosedError
+            break
+          rescue
+            break
           end
         end
       end
 
       socket.on_close do
         Log.debug { "WebSocket client disconnected from inspector" }
+        closed.set(true)
         @store.unsubscribe(channel)
       end
 

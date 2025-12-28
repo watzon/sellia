@@ -17,6 +17,7 @@ module Sellia::Server
     property pending_requests : PendingRequestStore
     property rate_limiter : CompositeRateLimiter
     property domain : String
+    property port : Int32
     property use_https : Bool
 
     PING_INTERVAL  = 30.seconds
@@ -29,6 +30,7 @@ module Sellia::Server
       @pending_requests : PendingRequestStore,
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
+      @port : Int32 = 3000,
       @use_https : Bool = false
     )
       spawn_heartbeat_loop
@@ -155,7 +157,9 @@ module Sellia::Server
 
       # Build public URL
       protocol = @use_https ? "https" : "http"
-      url = "#{protocol}://#{subdomain}.#{@domain}"
+      default_port = @use_https ? 443 : 80
+      port_suffix = @port == default_port ? "" : ":#{@port}"
+      url = "#{protocol}://#{subdomain}.#{@domain}#{port_suffix}"
 
       client.send(Protocol::Messages::TunnelReady.new(
         tunnel_id: tunnel_id,

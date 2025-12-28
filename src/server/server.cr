@@ -53,6 +53,7 @@ module Sellia::Server
         pending_requests: @pending_requests,
         rate_limiter: @rate_limiter,
         domain: @domain,
+        port: @port,
         use_https: @use_https
       )
 

@@ -1,5 +1,9 @@
-/docs/api/
+/docs/
 /lib/
 /bin/
 /.shards/
 *.dwarf
+
+# Web build artifacts
+/web/node_modules/
+/web/dist/
