@@ -15,7 +15,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Build Crystal binaries
 # =============================================================================
-FROM crystallang/crystal:1.14.0-alpine AS crystal-builder
+FROM 84codes/crystal:1.18.2-alpine AS crystal-builder
 
 # Install build dependencies
 RUN apk add --no-cache --update \
