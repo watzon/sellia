@@ -16,7 +16,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 Instead, please report them via email to:
 
-**security@watzon.me**
+**chris@watzon.tech**
 
 Include the following information:
 
