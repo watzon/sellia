@@ -46,7 +46,7 @@ module Sellia::CLI
       @request_headers : Hash(String, String),
       @request_body : String?,
       @response_headers : Hash(String, String),
-      @response_body : String?
+      @response_body : String?,
     )
     end
   end

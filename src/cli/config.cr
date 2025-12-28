@@ -56,7 +56,7 @@ module Sellia::CLI
         @type : String = "http",
         @subdomain : String? = nil,
         @auth : String? = nil,
-        @local_host : String = "localhost"
+        @local_host : String = "localhost",
       )
       end
     end
@@ -77,7 +77,7 @@ module Sellia::CLI
       @server : String = "https://sellia.me",
       @api_key : String? = nil,
       @inspector : Inspector = Inspector.new,
-      @tunnels : Hash(String, TunnelConfig) = {} of String => TunnelConfig
+      @tunnels : Hash(String, TunnelConfig) = {} of String => TunnelConfig,
     )
     end
 
@@ -98,7 +98,7 @@ module Sellia::CLI
       paths = [
         Path.home / ".config" / "sellia" / "sellia.yml",
         Path.home / ".sellia.yml",
-        Path.new("sellia.yml")
+        Path.new("sellia.yml"),
       ]
 
       paths.each do |path|

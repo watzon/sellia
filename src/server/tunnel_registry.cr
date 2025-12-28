@@ -41,9 +41,9 @@ module Sellia::Server
     end
 
     def initialize
-      @tunnels = {} of String => Tunnel       # id -> tunnel
-      @by_subdomain = {} of String => Tunnel  # subdomain -> tunnel
-      @by_client = {} of String => Array(Tunnel)  # client_id -> tunnels
+      @tunnels = {} of String => Tunnel          # id -> tunnel
+      @by_subdomain = {} of String => Tunnel     # subdomain -> tunnel
+      @by_client = {} of String => Array(Tunnel) # client_id -> tunnels
       @mutex = Mutex.new
     end
 

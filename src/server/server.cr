@@ -38,7 +38,7 @@ module Sellia::Server
       @require_auth : Bool = false,
       @master_key : String? = nil,
       @use_https : Bool = false,
-      @rate_limiting : Bool = true
+      @rate_limiting : Bool = true,
     )
       @tunnel_registry = TunnelRegistry.new
       @connection_manager = ConnectionManager.new

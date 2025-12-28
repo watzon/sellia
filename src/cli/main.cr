@@ -298,14 +298,14 @@ module Sellia::CLI
 
       # Read existing config or create new one
       existing_config = if File.exists?(config_path)
-        begin
-          Config.from_yaml(File.read(config_path))
-        rescue
-          Config.new
-        end
-      else
-        Config.new
-      end
+                          begin
+                            Config.from_yaml(File.read(config_path))
+                          rescue
+                            Config.new
+                          end
+                        else
+                          Config.new
+                        end
 
       # Update API key and write back
       existing_config.api_key = api_key
@@ -346,10 +346,10 @@ module Sellia::CLI
       # Mask the API key for security
       key = config.api_key.not_nil!
       masked = if key.size > 8
-        "#{key[0, 4]}...#{key[-4, 4]}"
-      else
-        "****"
-      end
+                 "#{key[0, 4]}...#{key[-4, 4]}"
+               else
+                 "****"
+               end
       puts "#{"API Key:".colorize(:white).bold} #{masked.colorize(:dark_gray)}"
     else
       puts "#{"Status:".colorize(:white).bold} #{"Not logged in".colorize(:yellow)}"

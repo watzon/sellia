@@ -21,7 +21,7 @@ module Sellia::Server
       @pending_requests : PendingRequestStore,
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
-      @request_timeout : Time::Span = 30.seconds
+      @request_timeout : Time::Span = 30.seconds,
     )
     end
 

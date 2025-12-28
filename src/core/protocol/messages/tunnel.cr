@@ -4,16 +4,16 @@ module Sellia::Protocol::Messages
   # Request to open a tunnel
   class TunnelOpen < Message
     property type : String = "tunnel_open"
-    property tunnel_type : String    # "http" or "tcp"
+    property tunnel_type : String # "http" or "tcp"
     property local_port : Int32
-    property subdomain : String?     # Optional: custom subdomain
-    property auth : String?          # Optional: "user:pass" for basic auth
+    property subdomain : String? # Optional: custom subdomain
+    property auth : String?      # Optional: "user:pass" for basic auth
 
     def initialize(
       @tunnel_type : String,
       @local_port : Int32,
       @subdomain : String? = nil,
-      @auth : String? = nil
+      @auth : String? = nil,
     )
     end
   end

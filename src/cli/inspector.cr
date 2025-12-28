@@ -81,16 +81,12 @@ module Sellia::CLI
       case path
       when "/api/live"
         handle_websocket(context)
-
       when "/api/requests"
         handle_requests_api(context)
-
       when "/api/requests/clear"
         handle_clear_api(context)
-
       when "/"
         serve_file(context, "/index.html")
-
       else
         serve_file(context, path)
       end

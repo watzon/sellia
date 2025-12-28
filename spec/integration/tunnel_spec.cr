@@ -410,7 +410,7 @@ describe "End-to-end tunnel integration" do
       # Connect client to a port where nothing is running
       client = Sellia::CLI::TunnelClient.new(
         server_url: "http://127.0.0.1:#{server_port}",
-        local_port: 19000,  # No server running here
+        local_port: 19000, # No server running here
         subdomain: "nolocal"
       )
       client.auto_reconnect = false

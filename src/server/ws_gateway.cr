@@ -20,8 +20,8 @@ module Sellia::Server
     property port : Int32
     property use_https : Bool
 
-    PING_INTERVAL  = 30.seconds
-    PING_TIMEOUT   = 60.seconds
+    PING_INTERVAL = 30.seconds
+    PING_TIMEOUT  = 60.seconds
 
     def initialize(
       @connection_manager : ConnectionManager,
@@ -31,7 +31,7 @@ module Sellia::Server
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @port : Int32 = 3000,
-      @use_https : Bool = false
+      @use_https : Bool = false,
     )
       spawn_heartbeat_loop
     end

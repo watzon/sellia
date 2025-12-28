@@ -18,7 +18,7 @@ module Sellia::CLI
       method : String,
       path : String,
       headers : Hash(String, String),
-      body : IO?
+      body : IO?,
     ) : {Int32, Hash(String, String), IO}
       # Build HTTP::Headers from hash, filtering hop-by-hop headers
       http_headers = HTTP::Headers.new
@@ -67,7 +67,7 @@ module Sellia::CLI
       method : String,
       path : String,
       headers : HTTP::Headers,
-      body : IO?
+      body : IO?,
     ) : HTTP::Client::Response
       case method.upcase
       when "GET"

@@ -12,14 +12,14 @@ module Sellia::Server
     end
 
     struct Config
-      property max_tokens : Float64      # Maximum burst capacity
-      property refill_rate : Float64     # Tokens per second
-      property window : Time::Span       # Window for cleanup
+      property max_tokens : Float64  # Maximum burst capacity
+      property refill_rate : Float64 # Tokens per second
+      property window : Time::Span   # Window for cleanup
 
       def initialize(
         @max_tokens : Float64 = 100.0,
         @refill_rate : Float64 = 10.0,
-        @window : Time::Span = 1.hour
+        @window : Time::Span = 1.hour,
       )
       end
     end
@@ -106,17 +106,17 @@ module Sellia::Server
 
       def initialize(
         @connections_per_ip : RateLimiter::Config = RateLimiter::Config.new(
-          max_tokens: 10.0,     # Max 10 connections burst
-          refill_rate: 1.0     # 1 connection per second
+          max_tokens: 10.0, # Max 10 connections burst
+          refill_rate: 1.0  # 1 connection per second
         ),
         @tunnels_per_client : RateLimiter::Config = RateLimiter::Config.new(
-          max_tokens: 5.0,      # Max 5 tunnels burst
-          refill_rate: 0.1     # 1 tunnel per 10 seconds
+          max_tokens: 5.0, # Max 5 tunnels burst
+          refill_rate: 0.1 # 1 tunnel per 10 seconds
         ),
         @requests_per_tunnel : RateLimiter::Config = RateLimiter::Config.new(
-          max_tokens: 100.0,    # Max 100 requests burst
-          refill_rate: 50.0    # 50 requests per second
-        )
+          max_tokens: 100.0, # Max 100 requests burst
+          refill_rate: 50.0  # 50 requests per second
+        ),
       )
       end
     end

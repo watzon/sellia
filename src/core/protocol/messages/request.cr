@@ -15,7 +15,7 @@ module Sellia::Protocol::Messages
       @tunnel_id : String,
       @method : String,
       @path : String,
-      @headers : Hash(String, String)
+      @headers : Hash(String, String),
     )
     end
   end
@@ -41,7 +41,7 @@ module Sellia::Protocol::Messages
     def initialize(
       @request_id : String,
       @status_code : Int32,
-      @headers : Hash(String, String)
+      @headers : Hash(String, String),
     )
     end
   end

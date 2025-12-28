@@ -57,7 +57,7 @@ module Sellia::CLI
       @local_host : String = "localhost",
       @subdomain : String? = nil,
       @auth : String? = nil,
-      @request_store : RequestStore? = nil
+      @request_store : RequestStore? = nil,
     )
       @proxy = LocalProxy.new(@local_host, @local_port)
     end
@@ -141,7 +141,6 @@ module Sellia::CLI
 
         # Begin authentication flow
         authenticate
-
       rescue ex
         Log.error { "Connection failed: #{ex.message}" }
         @on_error.try(&.call("Connection failed: #{ex.message}"))
@@ -188,7 +187,7 @@ module Sellia::CLI
         return
       end
 
-      delay = @reconnect_delay * @reconnect_attempts  # Exponential backoff
+      delay = @reconnect_delay * @reconnect_attempts # Exponential backoff
       Log.info { "Reconnecting in #{delay.total_seconds.to_i} seconds (attempt #{@reconnect_attempts}/#{@max_reconnect_attempts})..." }
 
       sleep delay
@@ -225,26 +224,19 @@ module Sellia::CLI
       case message
       when Protocol::Messages::AuthOk
         handle_auth_ok(message)
-
       when Protocol::Messages::AuthError
         handle_auth_error(message)
-
       when Protocol::Messages::TunnelReady
         handle_tunnel_ready(message)
-
       when Protocol::Messages::TunnelClose
         handle_tunnel_close(message)
-
       when Protocol::Messages::RequestStart
         handle_request_start(message)
-
       when Protocol::Messages::RequestBody
         handle_request_body(message)
-
       when Protocol::Messages::Ping
         send_message(Protocol::Messages::Pong.new(message.timestamp))
       end
-
     rescue ex
       Log.error { "Error handling message: #{ex.message}" }
     end
@@ -258,7 +250,7 @@ module Sellia::CLI
     private def handle_auth_error(message : Protocol::Messages::AuthError)
       Log.error { "Authentication failed: #{message.error}" }
       @on_error.try(&.call("Authentication failed: #{message.error}"))
-      @auto_reconnect = false  # Don't retry with bad credentials
+      @auto_reconnect = false # Don't retry with bad credentials
       stop
     end
 
@@ -385,15 +377,14 @@ module Sellia::CLI
         )
         store.add(stored_request)
       end
-
     rescue ex
       Log.error { "Error forwarding request #{request_id}: #{ex.message}" }
 
       error_duration = if actual_start = start_time
-        (Time.monotonic - actual_start).total_milliseconds.to_i64
-      else
-        0_i64
-      end
+                         (Time.monotonic - actual_start).total_milliseconds.to_i64
+                       else
+                         0_i64
+                       end
 
       # Send error response if we haven't started sending yet
       send_message(Protocol::Messages::ResponseStart.new(
