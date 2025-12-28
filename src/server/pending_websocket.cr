@@ -48,12 +48,15 @@ module Sellia::Server
         @context.response.headers[key] = value
       end
 
-      # Perform WebSocket upgrade
+      # Signal success immediately to unblock wait_for_upgrade
+      # This must happen BEFORE spawning since the spawned fiber may be delayed
+      @upgrade_complete.send(true)
+
+      # Perform WebSocket upgrade in background fiber
       handler = HTTP::WebSocketHandler.new do |socket, ctx|
         @socket = socket
         @upgrade_succeeded = true
         setup_handlers(socket)
-        @upgrade_complete.send(true)
         # socket.run is called by the handler
       end
 
