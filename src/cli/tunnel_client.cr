@@ -90,6 +90,10 @@ module Sellia::CLI
       @authenticated = false
       @socket.try(&.close)
       @socket = nil
+
+      # Clear in-flight requests to prevent memory leaks
+      @pending_requests.clear
+      @request_bodies.clear
     end
 
     # Returns true if the client is currently running (may be reconnecting)
@@ -147,6 +151,11 @@ module Sellia::CLI
         Log.info { "Disconnected from server (code: #{code})" }
         @connected = false
         @authenticated = false
+
+        # Clear in-flight requests to prevent memory leaks
+        @pending_requests.clear
+        @request_bodies.clear
+
         @on_disconnect.try(&.call)
 
         # Attempt reconnection if still running
