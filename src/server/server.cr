@@ -120,6 +120,7 @@ module Sellia::Server
     domain = ENV["SELLIA_DOMAIN"]? || "localhost"
     require_auth = ENV["SELLIA_REQUIRE_AUTH"]? == "true"
     master_key = ENV["SELLIA_MASTER_KEY"]?
+    use_https = ENV["SELLIA_USE_HTTPS"]? == "true"
 
     # Parse command-line options (override env vars)
     OptionParser.parse do |parser|
@@ -133,6 +134,7 @@ module Sellia::Server
         master_key = k
         require_auth = true
       end
+      parser.on("--https", "Generate HTTPS URLs for tunnels") { use_https = true }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -154,7 +156,8 @@ module Sellia::Server
       port: port,
       domain: domain,
       require_auth: require_auth,
-      master_key: master_key
+      master_key: master_key,
+      use_https: use_https
     ).start
   end
 end
