@@ -3,6 +3,7 @@ require "base64"
 require "./tunnel_registry"
 require "./connection_manager"
 require "./pending_request"
+require "./pending_websocket"
 require "./rate_limiter"
 require "./landing"
 require "../core/protocol"
@@ -14,6 +15,7 @@ module Sellia::Server
     property tunnel_registry : TunnelRegistry
     property connection_manager : ConnectionManager
     property pending_requests : PendingRequestStore
+    property pending_websockets : PendingWebSocketStore
     property rate_limiter : CompositeRateLimiter
     property domain : String
     property request_timeout : Time::Span
@@ -23,6 +25,7 @@ module Sellia::Server
       @tunnel_registry : TunnelRegistry,
       @connection_manager : ConnectionManager,
       @pending_requests : PendingRequestStore,
+      @pending_websockets : PendingWebSocketStore,
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @request_timeout : Time::Span = 30.seconds,
@@ -89,8 +92,58 @@ module Sellia::Server
         return
       end
 
-      # Proxy the request
-      proxy_request(context, client, tunnel)
+      # Check for WebSocket upgrade
+      if websocket_upgrade?(request)
+        proxy_websocket(context, client, tunnel)
+      else
+        proxy_request(context, client, tunnel)
+      end
+    end
+
+    private def websocket_upgrade?(request : HTTP::Request) : Bool
+      connection = request.headers["Connection"]?.try(&.downcase) || ""
+      upgrade = request.headers["Upgrade"]?.try(&.downcase) || ""
+      connection.includes?("upgrade") && upgrade == "websocket"
+    end
+
+    private def proxy_websocket(context : HTTP::Server::Context, client : ClientConnection, tunnel : TunnelRegistry::Tunnel)
+      request_id = Random::Secure.hex(16)
+
+      Log.debug { "WebSocket upgrade #{request_id}: #{context.request.resource} -> tunnel #{tunnel.subdomain}" }
+
+      # Build headers including WebSocket-specific ones
+      headers = {} of String => String
+      context.request.headers.each do |key, values|
+        headers[key] = values.first
+      end
+
+      # Create pending WebSocket tracking
+      pending_ws = PendingWebSocket.new(request_id, context, tunnel.id)
+      @pending_websockets.add(pending_ws)
+
+      # Send upgrade request to client
+      unless client.send(Protocol::Messages::WebSocketUpgrade.new(
+               request_id: request_id,
+               tunnel_id: tunnel.id,
+               path: context.request.resource,
+               headers: headers
+             ))
+        @pending_websockets.remove(request_id)
+        context.response.status_code = 502
+        context.response.print("Tunnel client disconnected")
+        return
+      end
+
+      # Wait for upgrade confirmation - the actual upgrade and frame forwarding
+      # is handled by WSGateway when it receives WebSocketUpgradeOk
+      unless pending_ws.wait_for_upgrade(@request_timeout)
+        @pending_websockets.remove(request_id)
+        # Response already sent by fail_upgrade in wait_for_upgrade
+        return
+      end
+
+      Log.debug { "WebSocket upgrade #{request_id} completed" }
+      # Note: pending_ws stays in store for frame forwarding until connection closes
     end
 
     private def extract_subdomain(host : String) : String?

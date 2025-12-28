@@ -3,6 +3,7 @@ require "uri"
 require "log"
 require "../core/protocol"
 require "./local_proxy"
+require "./websocket_proxy"
 require "./config"
 require "./request_store"
 
@@ -44,6 +45,9 @@ module Sellia::CLI
     @pending_requests : Hash(String, Protocol::Messages::RequestStart) = {} of String => Protocol::Messages::RequestStart
     @request_bodies : Hash(String, IO::Memory) = {} of String => IO::Memory
     @request_start_times : Hash(String, Time::Span) = {} of String => Time::Span
+
+    # Active WebSocket connections for passthrough
+    @active_websockets : Hash(String, WebSocketProxy) = {} of String => WebSocketProxy
 
     # Callbacks
     @on_connect : (String ->)?
@@ -102,6 +106,10 @@ module Sellia::CLI
       @pending_requests.clear
       @request_bodies.clear
       @request_start_times.clear
+
+      # Close all active WebSocket connections
+      @active_websockets.each_value(&.close)
+      @active_websockets.clear
     end
 
     # Returns true if the client is currently running (may be reconnecting)
@@ -173,6 +181,10 @@ module Sellia::CLI
         # Clear in-flight requests to prevent memory leaks
         @pending_requests.clear
         @request_bodies.clear
+
+        # Close all active WebSocket connections
+        @active_websockets.each_value(&.close)
+        @active_websockets.clear
 
         @on_disconnect.try(&.call)
 
@@ -248,6 +260,12 @@ module Sellia::CLI
         handle_request_body(message)
       when Protocol::Messages::Ping
         send_message(Protocol::Messages::Pong.new(message.timestamp))
+      when Protocol::Messages::WebSocketUpgrade
+        handle_websocket_upgrade(message)
+      when Protocol::Messages::WebSocketFrame
+        handle_websocket_frame(message)
+      when Protocol::Messages::WebSocketClose
+        handle_websocket_close(message)
       end
     rescue ex
       Log.error { "Error handling message: #{ex.message}" }
@@ -428,6 +446,58 @@ module Sellia::CLI
           response_body: "Internal proxy error: #{ex.message}"
         )
         store.add(stored_request)
+      end
+    end
+
+    private def handle_websocket_upgrade(message : Protocol::Messages::WebSocketUpgrade)
+      Log.debug { "WebSocket upgrade request: #{message.path}" }
+
+      ws_proxy = WebSocketProxy.new(message.request_id, @local_host, @local_port)
+
+      # Set up frame forwarding to server
+      ws_proxy.on_frame do |opcode, payload|
+        send_message(Protocol::Messages::WebSocketFrame.new(
+          request_id: message.request_id,
+          opcode: opcode,
+          payload: payload
+        ))
+      end
+
+      ws_proxy.on_close do |code, reason|
+        send_message(Protocol::Messages::WebSocketClose.new(
+          request_id: message.request_id,
+          code: code,
+          reason: reason
+        ))
+        @active_websockets.delete(message.request_id)
+      end
+
+      # Attempt connection to local service
+      if response_headers = ws_proxy.connect(message.path, message.headers)
+        @active_websockets[message.request_id] = ws_proxy
+        send_message(Protocol::Messages::WebSocketUpgradeOk.new(
+          request_id: message.request_id,
+          headers: response_headers
+        ))
+        Log.info { "WebSocket connected: #{message.path}" }
+      else
+        send_message(Protocol::Messages::WebSocketUpgradeError.new(
+          request_id: message.request_id,
+          status_code: 502,
+          message: "Failed to connect to local WebSocket service"
+        ))
+      end
+    end
+
+    private def handle_websocket_frame(message : Protocol::Messages::WebSocketFrame)
+      if ws_proxy = @active_websockets[message.request_id]?
+        ws_proxy.send_frame(message.opcode, message.payload)
+      end
+    end
+
+    private def handle_websocket_close(message : Protocol::Messages::WebSocketClose)
+      if ws_proxy = @active_websockets.delete(message.request_id)
+        ws_proxy.close(message.code, message.reason)
       end
     end
 

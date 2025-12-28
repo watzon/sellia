@@ -5,6 +5,7 @@ require "./connection_manager"
 require "./tunnel_registry"
 require "./auth_provider"
 require "./pending_request"
+require "./pending_websocket"
 require "./rate_limiter"
 require "../core/protocol"
 
@@ -15,6 +16,7 @@ module Sellia::Server
     property tunnel_registry : TunnelRegistry
     property auth_provider : AuthProvider
     property pending_requests : PendingRequestStore
+    property pending_websockets : PendingWebSocketStore
     property rate_limiter : CompositeRateLimiter
     property domain : String
     property port : Int32
@@ -28,6 +30,7 @@ module Sellia::Server
       @tunnel_registry : TunnelRegistry,
       @auth_provider : AuthProvider,
       @pending_requests : PendingRequestStore,
+      @pending_websockets : PendingWebSocketStore,
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @port : Int32 = 3000,
@@ -91,6 +94,14 @@ module Sellia::Server
         handle_response_end(client, message)
       when Protocol::Messages::Ping
         client.send(Protocol::Messages::Pong.new(message.timestamp))
+      when Protocol::Messages::WebSocketUpgradeOk
+        handle_ws_upgrade_ok(client, message)
+      when Protocol::Messages::WebSocketUpgradeError
+        handle_ws_upgrade_error(client, message)
+      when Protocol::Messages::WebSocketFrame
+        handle_ws_frame(client, message)
+      when Protocol::Messages::WebSocketClose
+        handle_ws_close(client, message)
       end
     end
 
@@ -206,6 +217,56 @@ module Sellia::Server
       end
     end
 
+    private def handle_ws_upgrade_ok(client : ClientConnection, message : Protocol::Messages::WebSocketUpgradeOk)
+      if pending_ws = @pending_websockets.get(message.request_id)
+        Log.debug { "WebSocket upgrade OK for #{message.request_id}" }
+
+        # Set up frame forwarding from external client to tunnel client
+        pending_ws.on_frame do |opcode, payload|
+          client.send(Protocol::Messages::WebSocketFrame.new(
+            request_id: message.request_id,
+            opcode: opcode,
+            payload: payload
+          ))
+        end
+
+        pending_ws.on_close do |code|
+          client.send(Protocol::Messages::WebSocketClose.new(
+            request_id: message.request_id,
+            code: code
+          ))
+          @pending_websockets.remove(message.request_id)
+        end
+
+        # Complete the upgrade (starts WebSocket on server side)
+        pending_ws.complete_upgrade(message.headers)
+      else
+        Log.debug { "WebSocket upgrade OK for unknown request #{message.request_id}" }
+      end
+    end
+
+    private def handle_ws_upgrade_error(client : ClientConnection, message : Protocol::Messages::WebSocketUpgradeError)
+      if pending_ws = @pending_websockets.get(message.request_id)
+        Log.debug { "WebSocket upgrade error for #{message.request_id}: #{message.message}" }
+        pending_ws.fail_upgrade(message.status_code, message.message)
+        @pending_websockets.remove(message.request_id)
+      end
+    end
+
+    private def handle_ws_frame(client : ClientConnection, message : Protocol::Messages::WebSocketFrame)
+      # Frame from tunnel client's local WebSocket -> send to external client's WebSocket
+      if pending_ws = @pending_websockets.get(message.request_id)
+        pending_ws.send_frame(message.opcode, message.payload)
+      end
+    end
+
+    private def handle_ws_close(client : ClientConnection, message : Protocol::Messages::WebSocketClose)
+      if pending_ws = @pending_websockets.remove(message.request_id)
+        Log.debug { "WebSocket close for #{message.request_id}" }
+        pending_ws.close
+      end
+    end
+
     private def handle_disconnect(client : ClientConnection)
       Log.debug { "Client disconnected: #{client.id}" }
 
@@ -217,6 +278,10 @@ module Sellia::Server
         # Clean up any pending requests for this tunnel
         removed = @pending_requests.remove_by_tunnel(tunnel.id)
         Log.debug { "Cleaned up #{removed} pending requests" } if removed > 0
+
+        # Clean up any pending WebSockets for this tunnel
+        ws_removed = @pending_websockets.remove_by_tunnel(tunnel.id)
+        Log.debug { "Cleaned up #{ws_removed} pending WebSockets" } if ws_removed > 0
 
         # Reset rate limits for this tunnel
         @rate_limiter.reset_tunnel(tunnel.id)

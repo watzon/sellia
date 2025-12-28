@@ -4,6 +4,7 @@ require "log"
 require "./tunnel_registry"
 require "./connection_manager"
 require "./pending_request"
+require "./pending_websocket"
 require "./auth_provider"
 require "./rate_limiter"
 require "./ws_gateway"
@@ -25,6 +26,7 @@ module Sellia::Server
     @tunnel_registry : TunnelRegistry
     @connection_manager : ConnectionManager
     @pending_requests : PendingRequestStore
+    @pending_websockets : PendingWebSocketStore
     @auth_provider : AuthProvider
     @rate_limiter : CompositeRateLimiter
     @ws_gateway : WSGateway
@@ -45,6 +47,7 @@ module Sellia::Server
       @tunnel_registry = TunnelRegistry.new
       @connection_manager = ConnectionManager.new
       @pending_requests = PendingRequestStore.new
+      @pending_websockets = PendingWebSocketStore.new
       @auth_provider = AuthProvider.new(@require_auth, @master_key)
       @rate_limiter = CompositeRateLimiter.new(enabled: @rate_limiting)
 
@@ -53,6 +56,7 @@ module Sellia::Server
         tunnel_registry: @tunnel_registry,
         auth_provider: @auth_provider,
         pending_requests: @pending_requests,
+        pending_websockets: @pending_websockets,
         rate_limiter: @rate_limiter,
         domain: @domain,
         port: @port,
@@ -63,6 +67,7 @@ module Sellia::Server
         tunnel_registry: @tunnel_registry,
         connection_manager: @connection_manager,
         pending_requests: @pending_requests,
+        pending_websockets: @pending_websockets,
         rate_limiter: @rate_limiter,
         domain: @domain,
         landing_enabled: @landing_enabled

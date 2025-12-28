@@ -13,6 +13,7 @@ require "./protocol/message"
 require "./protocol/messages/auth"
 require "./protocol/messages/tunnel"
 require "./protocol/messages/request"
+require "./protocol/messages/websocket"
 
 module Sellia::Protocol
   # Re-export message types for convenience
@@ -29,4 +30,9 @@ module Sellia::Protocol
   alias ResponseEnd = Messages::ResponseEnd
   alias Ping = Messages::Ping
   alias Pong = Messages::Pong
+  alias WebSocketUpgrade = Messages::WebSocketUpgrade
+  alias WebSocketUpgradeOk = Messages::WebSocketUpgradeOk
+  alias WebSocketUpgradeError = Messages::WebSocketUpgradeError
+  alias WebSocketFrame = Messages::WebSocketFrame
+  alias WebSocketClose = Messages::WebSocketClose
 end
