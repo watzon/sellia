@@ -2,14 +2,12 @@
 #
 # On-demand TLS obtains certificates for each subdomain as they're accessed.
 # This avoids the DNS-01 challenge required for wildcard certificates.
-#
-# Rate limiting prevents abuse of certificate issuance.
 
 {
-    on_demand_tls {
-        interval 1m
-        burst 10
-    }
+    # For production, add an 'ask' endpoint to verify valid subdomains:
+    # on_demand_tls {
+    #     ask http://sellia-server:3000/tunnel/verify
+    # }
 }
 
 # Catch-all HTTPS handler for all subdomains
