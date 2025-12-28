@@ -1,15 +1,9 @@
 require "log"
 require "./server"
 
-# Configure logging
-Log.setup do |c|
-  backend = Log::IOBackend.new(formatter: Log::ShortFormat)
-  c.bind "*", :info, backend
-
-  # Debug level for verbose output (can be enabled via env)
-  if ENV["SELLIA_DEBUG"]? == "true"
-    c.bind "sellia.*", :debug, backend
-  end
-end
+# Configure logging from environment (LOG_LEVEL, CRYSTAL_LOG_LEVEL, or CRYSTAL_LOG_SOURCES)
+# Falls back to info level if not specified
+# Set LOG_LEVEL=DEBUG to enable debug logging
+Log.setup_from_env(default_level: :info)
 
 Sellia::Server.run
