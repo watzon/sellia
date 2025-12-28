@@ -19,6 +19,14 @@ function App() {
   const [connected, setConnected] = useState(false)
   const [reconnectCounter, setReconnectCounter] = useState(0)
 
+  // Load historical requests on page load
+  useEffect(() => {
+    fetch('/api/requests')
+      .then(r => r.json())
+      .then(data => setRequests(data))
+      .catch(console.error)
+  }, [])
+
   useEffect(() => {
     // Connect to inspector WebSocket
     const ws = new WebSocket(`ws://${window.location.host}/api/live`)
@@ -72,7 +80,10 @@ function App() {
           </span>
         </div>
         <button
-          onClick={() => setRequests([])}
+          onClick={async () => {
+            await fetch('/api/requests/clear', { method: 'POST' })
+            setRequests([])
+          }}
           className="text-sm text-gray-400 hover:text-white"
         >
           Clear All
