@@ -38,6 +38,7 @@ module Sellia::CLI
     @proxy : LocalProxy
     @running : Bool = false
     @reconnect_attempts : Int32 = 0
+    @send_mutex : Mutex = Mutex.new
 
     # Storage for in-flight requests
     @pending_requests : Hash(String, Protocol::Messages::RequestStart) = {} of String => Protocol::Messages::RequestStart
@@ -435,16 +436,18 @@ module Sellia::CLI
       return unless socket
       return unless @running # Don't send after shutdown initiated
 
-      begin
+      # Mutex protects against concurrent WebSocket writes from multiple fibers
+      # Without this, parallel request handlers can interleave frames and corrupt the stream
+      @send_mutex.synchronize do
         socket.send(message.to_msgpack)
+      end
+    rescue Channel::ClosedError
+      # Log channel closed during shutdown - ignore
+    rescue ex
+      begin
+        Log.error { "Failed to send message: #{ex.message}" } if @running
       rescue Channel::ClosedError
-        # Log channel closed during shutdown - ignore
-      rescue ex
-        begin
-          Log.error { "Failed to send message: #{ex.message}" } if @running
-        rescue Channel::ClosedError
-          # Ignore log channel closed during shutdown
-        end
+        # Ignore log channel closed during shutdown
       end
     end
   end
