@@ -135,8 +135,13 @@ module Sellia::Server
       # Extract subdomain from the full domain
       subdomain = extract_subdomain(domain_param)
 
-      if subdomain && @tunnel_registry.find_by_subdomain(subdomain)
-        # Active tunnel exists - allow certificate
+      # Allow the base domain (for WebSocket connections from clients)
+      # Also allow subdomains that have active tunnels
+      domain_without_port = @domain.split(":").first
+      is_base_domain = domain_param == domain_without_port
+
+      if is_base_domain || (subdomain && @tunnel_registry.find_by_subdomain(subdomain))
+        # Base domain or active tunnel - allow certificate
         context.response.status_code = 200
         context.response.content_type = "text/plain"
         context.response.print("OK")
