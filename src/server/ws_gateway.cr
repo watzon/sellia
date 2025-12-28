@@ -181,19 +181,28 @@ module Sellia::Server
 
     private def handle_response_start(client : ClientConnection, message : Protocol::Messages::ResponseStart)
       if pending = @pending_requests.get(message.request_id)
+        Log.debug { "ResponseStart for #{message.request_id}: status=#{message.status_code}" }
         pending.start_response(message.status_code, message.headers)
+      else
+        Log.debug { "ResponseStart for unknown request #{message.request_id}" }
       end
     end
 
     private def handle_response_body(client : ClientConnection, message : Protocol::Messages::ResponseBody)
       if pending = @pending_requests.get(message.request_id)
+        Log.debug { "ResponseBody for #{message.request_id}: #{message.chunk.size} bytes" }
         pending.write_body(message.chunk) unless message.chunk.empty?
+      else
+        Log.debug { "ResponseBody for unknown request #{message.request_id}" }
       end
     end
 
     private def handle_response_end(client : ClientConnection, message : Protocol::Messages::ResponseEnd)
       if pending = @pending_requests.get(message.request_id)
+        Log.debug { "ResponseEnd for #{message.request_id}" }
         pending.finish
+      else
+        Log.debug { "ResponseEnd for unknown request #{message.request_id}" }
       end
     end
 

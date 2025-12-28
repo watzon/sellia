@@ -8,6 +8,11 @@
 
 {
 	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+
+	# Disable HTTP/3 - it can cause request cancellation issues with tunneled traffic
+	servers {
+		protocols h1 h2
+	}
 }
 
 # Wildcard for all tunnel subdomains

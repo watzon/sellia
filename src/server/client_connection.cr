@@ -31,8 +31,13 @@ module Sellia::Server
         begin
           message = Protocol::Message.from_msgpack(bytes)
           @message_handler.try(&.call(message))
-        rescue ex
+        rescue ex : MessagePack::Error | MessagePack::TypeCastError
           Log.warn { "Failed to parse message from #{@id}: #{ex.message}" }
+        rescue ex
+          # Catch ALL exceptions from message handlers to prevent crashing socket.run
+          # This is critical - unhandled exceptions here will close the WebSocket
+          Log.warn { "Error handling message from #{@id}: #{ex.class.name} - #{ex.message}" }
+          Log.debug { ex.backtrace.first(5).join("\n") } if ex.backtrace
         end
       end
 
@@ -50,8 +55,13 @@ module Sellia::Server
       @close_handler = handler
     end
 
-    def send(message : Protocol::Message)
+    def send(message : Protocol::Message) : Bool
+      return false if @closed
       @socket.send(message.to_msgpack)
+      true
+    rescue ex : IO::Error
+      Log.debug { "Send failed for #{@id}: #{ex.message}" }
+      false
     end
 
     def close(reason : String? = nil)

@@ -1,14 +1,17 @@
 require "http/server"
 require "mutex"
+require "log"
 
 module Sellia::Server
   class PendingRequest
+    Log = ::Log.for("sellia.server.pending")
     property id : String
     property context : HTTP::Server::Context
     property tunnel_id : String
     property created_at : Time
     property response_started : Bool
     property channel : Channel(Nil)
+    @closed : Bool = false
 
     def initialize(@id : String, @context : HTTP::Server::Context, @tunnel_id : String)
       @created_at = Time.utc
@@ -17,16 +20,25 @@ module Sellia::Server
     end
 
     def start_response(status_code : Int32, headers : Hash(String, String))
+      return if @closed
       @response_started = true
       @context.response.status_code = status_code
       headers.each do |key, value|
         @context.response.headers[key] = value
       end
+    rescue ex : IO::Error
+      # Client disconnected (Caddy canceled, browser navigated away, etc.)
+      @closed = true
     end
 
     def write_body(chunk : Bytes)
+      return if @closed
       @context.response.write(chunk)
       @context.response.flush
+    rescue ex : IO::Error
+      # Client disconnected - mark as closed so subsequent writes are skipped
+      Log.debug { "Write failed for request #{@id}: #{ex.message} - marking as closed" }
+      @closed = true
     end
 
     def finish
@@ -52,11 +64,15 @@ module Sellia::Server
     end
 
     def error(status : Int32, message : String)
-      # Only set status/headers if response hasn't started yet
-      unless @response_started
-        @context.response.status_code = status
-        @context.response.content_type = "text/plain"
-        @context.response.print(message)
+      # Only set status/headers if response hasn't started yet and not already closed
+      unless @response_started || @closed
+        begin
+          @context.response.status_code = status
+          @context.response.content_type = "text/plain"
+          @context.response.print(message)
+        rescue ex : IO::Error
+          @closed = true
+        end
       end
       begin
         @context.response.close

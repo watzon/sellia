@@ -128,8 +128,15 @@ module Sellia::CLI
         spawn do
           begin
             socket.run
+          rescue Channel::ClosedError
+            # Log channel closed during shutdown - ignore
           rescue ex
-            Log.error { "WebSocket error: #{ex.message}" }
+            # Only log if we're still running - avoid Channel::ClosedError during shutdown
+            begin
+              Log.error { "WebSocket error: #{ex.message}" } if @running
+            rescue Channel::ClosedError
+              # Ignore log channel closed during shutdown
+            end
           end
         end
 
@@ -154,7 +161,11 @@ module Sellia::CLI
       end
 
       socket.on_close do |code|
-        Log.info { "Disconnected from server (code: #{code})" }
+        begin
+          Log.info { "Disconnected from server (code: #{code})" } if @running
+        rescue Channel::ClosedError
+          # Ignore log channel closed during shutdown
+        end
         @connected = false
         @authenticated = false
 
@@ -422,11 +433,18 @@ module Sellia::CLI
     private def send_message(message : Protocol::Message)
       socket = @socket
       return unless socket
+      return unless @running # Don't send after shutdown initiated
 
       begin
         socket.send(message.to_msgpack)
+      rescue Channel::ClosedError
+        # Log channel closed during shutdown - ignore
       rescue ex
-        Log.error { "Failed to send message: #{ex.message}" }
+        begin
+          Log.error { "Failed to send message: #{ex.message}" } if @running
+        rescue Channel::ClosedError
+          # Ignore log channel closed during shutdown
+        end
       end
     end
   end

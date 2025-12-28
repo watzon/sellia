@@ -9,6 +9,8 @@ require "../core/protocol"
 
 module Sellia::Server
   class HTTPIngress
+    Log = ::Log.for("sellia.server.ingress")
+
     property tunnel_registry : TunnelRegistry
     property connection_manager : ConnectionManager
     property pending_requests : PendingRequestStore
@@ -179,6 +181,8 @@ module Sellia::Server
     private def proxy_request(context : HTTP::Server::Context, client : ClientConnection, tunnel : TunnelRegistry::Tunnel)
       request_id = Random::Secure.hex(16)
 
+      Log.debug { "Proxying request #{request_id}: #{context.request.method} #{context.request.resource} -> tunnel #{tunnel.subdomain}" }
+
       # Create pending request
       pending = PendingRequest.new(request_id, context, tunnel.id)
       @pending_requests.add(pending)
@@ -190,13 +194,19 @@ module Sellia::Server
       end
 
       # Send request start to client
-      client.send(Protocol::Messages::RequestStart.new(
-        request_id: request_id,
-        tunnel_id: tunnel.id,
-        method: context.request.method,
-        path: context.request.resource,
-        headers: headers
-      ))
+      unless client.send(Protocol::Messages::RequestStart.new(
+               request_id: request_id,
+               tunnel_id: tunnel.id,
+               method: context.request.method,
+               path: context.request.resource,
+               headers: headers
+             ))
+        Log.warn { "Failed to send RequestStart for #{request_id} - client disconnected" }
+        @pending_requests.remove(request_id)
+        context.response.status_code = 502
+        context.response.print("Tunnel client disconnected")
+        return
+      end
 
       # Send request body if present
       if body = context.request.body
@@ -220,6 +230,7 @@ module Sellia::Server
 
       # Wait for response with timeout
       unless pending.wait(@request_timeout)
+        Log.warn { "Request #{request_id} timed out after #{@request_timeout}" }
         @pending_requests.remove(request_id)
         # Only set status if headers haven't been sent yet
         unless pending.response_started
@@ -229,6 +240,7 @@ module Sellia::Server
         return
       end
 
+      Log.debug { "Request #{request_id} completed" }
       @pending_requests.remove(request_id)
     end
   end
