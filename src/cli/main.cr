@@ -396,7 +396,7 @@ module Sellia::CLI
     puts "    ./sellia.yml"
     puts ""
     puts "  Example sellia.yml:"
-    puts "    #{"server:".colorize(:cyan)} https://sellia.me"
+    puts "    #{"server:".colorize(:cyan)} https://to.sellia.me"
     puts "    #{"api_key:".colorize(:cyan)} your-api-key"
     puts "    #{"tunnels:".colorize(:cyan)}"
     puts "      #{"web:".colorize(:yellow)}"

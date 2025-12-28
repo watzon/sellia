@@ -19,7 +19,7 @@ describe Sellia::CLI::Config do
 
     it "uses defaults for missing values" do
       config = Sellia::CLI::Config.new
-      config.server.should eq("https://sellia.me")
+      config.server.should eq("https://to.sellia.me")
       config.inspector.port.should eq(4040)
     end
 

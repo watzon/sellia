@@ -62,7 +62,7 @@ module Sellia::CLI
     end
 
     @[YAML::Field(key: "server")]
-    property server : String = "https://sellia.me"
+    property server : String = "https://to.sellia.me"
 
     @[YAML::Field(key: "api_key")]
     property api_key : String?
@@ -74,7 +74,7 @@ module Sellia::CLI
     property tunnels : Hash(String, TunnelConfig) = {} of String => TunnelConfig
 
     def initialize(
-      @server : String = "https://sellia.me",
+      @server : String = "https://to.sellia.me",
       @api_key : String? = nil,
       @inspector : Inspector = Inspector.new,
       @tunnels : Hash(String, TunnelConfig) = {} of String => TunnelConfig,
@@ -83,7 +83,7 @@ module Sellia::CLI
 
     def merge(other : Config) : Config
       Config.new(
-        server: other.server.empty? || other.server == "https://sellia.me" ? @server : other.server,
+        server: other.server.empty? || other.server == "https://to.sellia.me" ? @server : other.server,
         api_key: other.api_key || @api_key,
         inspector: @inspector.merge(other.inspector),
         tunnels: @tunnels.merge(other.tunnels)
