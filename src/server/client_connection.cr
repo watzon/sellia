@@ -48,7 +48,7 @@ module Sellia::Server
     end
 
     def close(reason : String? = nil)
-      @socket.close(reason || "Connection closed")
+      @socket.close(message: reason || "Connection closed")
     rescue
       # Socket may already be closed
     end
