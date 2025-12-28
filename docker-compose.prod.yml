@@ -1,0 +1,40 @@
+# Production overrides for docker-compose.yml
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This file adds Caddy as a reverse proxy with automatic HTTPS
+
+services:
+  sellia-server:
+    # Don't expose port directly - Caddy handles external traffic
+    ports: []
+    networks:
+      - sellia-internal
+    environment:
+      - SELLIA_USE_HTTPS=true
+      - SELLIA_REQUIRE_AUTH=true
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: sellia-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - sellia-internal
+    depends_on:
+      - sellia-server
+
+networks:
+  sellia-internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

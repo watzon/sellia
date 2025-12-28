@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+lib/
+docs/
+
+# Web development files (we copy web/dist separately)
+web/node_modules/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and spec files
+spec/
+
+# Documentation
+*.md
+!README.md
+LICENSE
+
+# Docker files (prevent recursion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Deploy configs (not needed in image)
+deploy/
+
+# Development files
+.crystal/
+.shards/

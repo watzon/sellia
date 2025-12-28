@@ -1,0 +1,42 @@
+# Sellia Caddyfile - Automatic HTTPS with Let's Encrypt
+#
+# Replace YOUR_DOMAIN with your actual domain (e.g., sellia.me)
+# Caddy automatically obtains and renews SSL certificates
+#
+# For wildcard certificates, you need DNS challenge:
+#   https://caddyserver.com/docs/automatic-https#dns-challenge
+
+# Main domain and wildcard subdomains
+*.YOUR_DOMAIN, YOUR_DOMAIN {
+    # Reverse proxy to Sellia server
+    reverse_proxy sellia-server:3000 {
+        # WebSocket support for tunnel connections
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # Flush immediately for WebSocket
+        flush_interval -1
+    }
+
+    # Optional: Enable logging
+    log {
+        output file /var/log/caddy/sellia.log
+        format json
+    }
+
+    # Optional: Rate limiting (requires caddy-ratelimit plugin)
+    # rate_limit {
+    #     zone dynamic_zone {
+    #         key {remote_host}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+}
+
+# Health check endpoint for load balancers (optional)
+:8080 {
+    respond /health 200
+}

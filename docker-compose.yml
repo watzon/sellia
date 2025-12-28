@@ -1,0 +1,36 @@
+# Sellia Docker Compose Configuration
+#
+# Usage:
+#   Development:  docker compose up
+#   Production:   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Environment variables can be set in .env file or passed directly
+
+services:
+  sellia-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sellia:latest
+    container_name: sellia-server
+    restart: unless-stopped
+    ports:
+      - "${SELLIA_PORT:-3000}:3000"
+    environment:
+      - SELLIA_HOST=0.0.0.0
+      - SELLIA_PORT=3000
+      - SELLIA_DOMAIN=${SELLIA_DOMAIN:-localhost}
+      - SELLIA_USE_HTTPS=${SELLIA_USE_HTTPS:-false}
+      - SELLIA_REQUIRE_AUTH=${SELLIA_REQUIRE_AUTH:-false}
+      - SELLIA_MASTER_KEY=${SELLIA_MASTER_KEY:-}
+      - SELLIA_RATE_LIMITING=${SELLIA_RATE_LIMITING:-true}
+      - SELLIA_DEBUG=${SELLIA_DEBUG:-false}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # Uncomment for persistent logs
+    # volumes:
+    #   - ./logs:/app/logs
