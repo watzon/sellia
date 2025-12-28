@@ -22,6 +22,15 @@ module Sellia::CLI
           open: other.open || @open
         )
       end
+
+      def to_yaml(yaml : YAML::Nodes::Builder)
+        yaml.mapping do
+          yaml.scalar "port"
+          yaml.scalar @port
+          yaml.scalar "open"
+          yaml.scalar @open
+        end
+      end
     end
 
     class TunnelConfig
