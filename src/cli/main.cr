@@ -2,6 +2,8 @@ require "option_parser"
 require "log"
 require "./config"
 require "./tunnel_client"
+require "./request_store"
+require "./inspector"
 require "../core/version"
 
 module Sellia::CLI
@@ -42,6 +44,7 @@ module Sellia::CLI
     api_key = config.api_key
     inspector_port = config.inspector.port
     open_inspector = config.inspector.open
+    no_inspector = false
 
     OptionParser.parse do |parser|
       parser.banner = "Usage: sellia http <port> [options]"
@@ -53,6 +56,7 @@ module Sellia::CLI
       parser.on("--api-key KEY", "-k KEY", "API key for authentication") { |k| api_key = k }
       parser.on("--inspector-port PORT", "-i PORT", "Inspector UI port (default: 4040)") { |p| inspector_port = p.to_i }
       parser.on("--open", "-o", "Open inspector in browser on connect") { open_inspector = true }
+      parser.on("--no-inspector", "Disable the request inspector") { no_inspector = true }
       parser.on("-h", "--help", "Show this help") { puts parser; exit 0 }
 
       parser.unknown_args do |args|
@@ -72,24 +76,45 @@ module Sellia::CLI
     puts "Forwarding to #{local_host}:#{port}"
     puts ""
 
+    # Create request store and inspector unless disabled
+    request_store : RequestStore? = nil
+    inspector : Inspector? = nil
+
+    unless no_inspector
+      request_store = RequestStore.new
+      inspector = Inspector.new(inspector_port, request_store)
+
+      # Start inspector in background
+      spawn do
+        inspector.not_nil!.start
+      end
+
+      # Give inspector time to bind
+      sleep 0.1.seconds
+    end
+
     client = TunnelClient.new(
       server_url: server,
       local_port: port,
       api_key: api_key,
       local_host: local_host,
       subdomain: subdomain,
-      auth: auth
+      auth: auth,
+      request_store: request_store
     )
 
     client.on_connect do |url|
       puts ""
       puts "Public URL: #{url}"
+      unless no_inspector
+        puts "Inspector:  http://127.0.0.1:#{inspector_port}"
+      end
       puts ""
       puts "Press Ctrl+C to stop"
       puts ""
 
       # Open inspector in browser if requested
-      if open_inspector
+      if open_inspector && !no_inspector
         spawn do
           open_browser("http://127.0.0.1:#{inspector_port}")
         end
@@ -106,7 +131,7 @@ module Sellia::CLI
     end
 
     # Handle graceful shutdown
-    setup_signal_handlers(client)
+    setup_signal_handlers(client, inspector)
 
     client.start
 
@@ -345,6 +370,7 @@ module Sellia::CLI
       -k, --api-key KEY       API key for authentication
       -i, --inspector-port    Inspector UI port (default: 4040)
       -o, --open              Open inspector in browser
+      --no-inspector          Disable the request inspector
       --server URL            Tunnel server URL
 
     Configuration:
@@ -369,13 +395,14 @@ module Sellia::CLI
     HELP
   end
 
-  private def self.setup_signal_handlers(client : TunnelClient)
+  private def self.setup_signal_handlers(client : TunnelClient, inspector : Inspector? = nil)
     shutdown = false
 
     Signal::INT.trap do
       unless shutdown
         shutdown = true
         puts "\nShutting down..."
+        inspector.try(&.stop)
         client.stop
         exit 0
       end
@@ -384,6 +411,7 @@ module Sellia::CLI
     Signal::TERM.trap do
       unless shutdown
         shutdown = true
+        inspector.try(&.stop)
         client.stop
         exit 0
       end

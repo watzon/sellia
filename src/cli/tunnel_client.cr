@@ -4,6 +4,7 @@ require "log"
 require "../core/protocol"
 require "./local_proxy"
 require "./config"
+require "./request_store"
 
 module Sellia::CLI
   # TunnelClient manages a WebSocket connection to the tunnel server
@@ -30,6 +31,9 @@ module Sellia::CLI
     property reconnect_delay : Time::Span = 3.seconds
     property max_reconnect_attempts : Int32 = 10
 
+    # Request store for inspector (optional)
+    property request_store : RequestStore?
+
     @socket : HTTP::WebSocket?
     @proxy : LocalProxy
     @running : Bool = false
@@ -38,6 +42,7 @@ module Sellia::CLI
     # Storage for in-flight requests
     @pending_requests : Hash(String, Protocol::Messages::RequestStart) = {} of String => Protocol::Messages::RequestStart
     @request_bodies : Hash(String, IO::Memory) = {} of String => IO::Memory
+    @request_start_times : Hash(String, Time::Span) = {} of String => Time::Span
 
     # Callbacks
     @on_connect : (String ->)?
@@ -51,7 +56,8 @@ module Sellia::CLI
       @api_key : String? = nil,
       @local_host : String = "localhost",
       @subdomain : String? = nil,
-      @auth : String? = nil
+      @auth : String? = nil,
+      @request_store : RequestStore? = nil
     )
       @proxy = LocalProxy.new(@local_host, @local_port)
     end
@@ -94,6 +100,7 @@ module Sellia::CLI
       # Clear in-flight requests to prevent memory leaks
       @pending_requests.clear
       @request_bodies.clear
+      @request_start_times.clear
     end
 
     # Returns true if the client is currently running (may be reconnecting)
@@ -282,9 +289,10 @@ module Sellia::CLI
       Log.debug { "Request start: #{message.method} #{message.path}" }
       @on_request.try(&.call(message))
 
-      # Store request metadata and initialize body buffer
+      # Store request metadata, initialize body buffer, and record start time
       @pending_requests[message.request_id] = message
       @request_bodies[message.request_id] = IO::Memory.new
+      @request_start_times[message.request_id] = Time.monotonic
     end
 
     private def handle_request_body(message : Protocol::Messages::RequestBody)
@@ -305,15 +313,16 @@ module Sellia::CLI
     private def forward_request(request_id : String)
       start_msg = @pending_requests.delete(request_id)
       body_io = @request_bodies.delete(request_id)
+      start_time = @request_start_times.delete(request_id) || Time.monotonic
 
       return unless start_msg && body_io
 
       body_io.rewind
+      request_body_content = body_io.size > 0 ? body_io.gets_to_end : nil
+      body_io.rewind
       body = body_io.size > 0 ? body_io : nil
 
       Log.debug { "Forwarding request #{request_id}: #{start_msg.method} #{start_msg.path}" }
-
-      start_time = Time.monotonic
 
       status_code, headers, response_body = @proxy.forward(
         start_msg.method,
@@ -333,10 +342,12 @@ module Sellia::CLI
         headers: headers
       ))
 
-      # Stream response body in chunks
+      # Stream response body in chunks and capture for inspector
+      response_body_chunks = IO::Memory.new
       buffer = Bytes.new(8192)
       while (read = response_body.read(buffer)) > 0
         chunk = buffer[0, read].dup
+        response_body_chunks.write(chunk)
         send_message(Protocol::Messages::ResponseBody.new(
           request_id: request_id,
           chunk: chunk
@@ -346,8 +357,43 @@ module Sellia::CLI
       # Signal end of response
       send_message(Protocol::Messages::ResponseEnd.new(request_id: request_id))
 
+      # Store request in the inspector if request_store is configured
+      if store = @request_store
+        response_body_chunks.rewind
+        response_body_content = response_body_chunks.gets_to_end
+
+        # Limit body size for storage (max 100KB for display)
+        max_body_size = 100_000
+        if request_body_content && request_body_content.size > max_body_size
+          request_body_content = request_body_content[0, max_body_size] + "\n... (truncated)"
+        end
+        if response_body_content.size > max_body_size
+          response_body_content = response_body_content[0, max_body_size] + "\n... (truncated)"
+        end
+
+        stored_request = StoredRequest.new(
+          id: request_id,
+          method: start_msg.method,
+          path: start_msg.path,
+          status_code: status_code,
+          duration: duration.to_i64,
+          timestamp: Time.utc,
+          request_headers: start_msg.headers,
+          request_body: request_body_content,
+          response_headers: headers,
+          response_body: response_body_content.empty? ? nil : response_body_content
+        )
+        store.add(stored_request)
+      end
+
     rescue ex
       Log.error { "Error forwarding request #{request_id}: #{ex.message}" }
+
+      error_duration = if actual_start = start_time
+        (Time.monotonic - actual_start).total_milliseconds.to_i64
+      else
+        0_i64
+      end
 
       # Send error response if we haven't started sending yet
       send_message(Protocol::Messages::ResponseStart.new(
@@ -363,6 +409,23 @@ module Sellia::CLI
       ))
 
       send_message(Protocol::Messages::ResponseEnd.new(request_id: request_id))
+
+      # Store error request in inspector if configured
+      if store = @request_store
+        stored_request = StoredRequest.new(
+          id: request_id,
+          method: start_msg.try(&.method) || "UNKNOWN",
+          path: start_msg.try(&.path) || "/",
+          status_code: 500,
+          duration: error_duration,
+          timestamp: Time.utc,
+          request_headers: start_msg.try(&.headers) || {} of String => String,
+          request_body: nil,
+          response_headers: {"Content-Type" => "text/plain"},
+          response_body: "Internal proxy error: #{ex.message}"
+        )
+        store.add(stored_request)
+      end
     end
 
     private def send_message(message : Protocol::Message)
