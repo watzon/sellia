@@ -14,6 +14,8 @@ module Sellia::Server
 
     @socket : HTTP::WebSocket?
     @closed : Bool = false
+    @upgrade_started : Bool = false
+    @upgrade_succeeded : Bool = false
     @upgrade_complete : Channel(Bool)
     @on_frame : Proc(UInt8, Bytes, Nil)?
     @on_close : Proc(UInt16?, Nil)?
@@ -36,6 +38,9 @@ module Sellia::Server
     # Complete the WebSocket upgrade after client confirms local connection
     def complete_upgrade(response_headers : Hash(String, String))
       return if @closed
+      return if @upgrade_started # Prevent double upgrade
+
+      @upgrade_started = true
 
       # Set response headers from client (excluding hop-by-hop)
       response_headers.each do |key, value|
@@ -46,6 +51,7 @@ module Sellia::Server
       # Perform WebSocket upgrade
       handler = HTTP::WebSocketHandler.new do |socket, ctx|
         @socket = socket
+        @upgrade_succeeded = true
         setup_handlers(socket)
         @upgrade_complete.send(true)
         # socket.run is called by the handler
@@ -59,12 +65,27 @@ module Sellia::Server
     # Fail the WebSocket upgrade
     def fail_upgrade(status : Int32, message : String)
       return if @closed
+      return if @upgrade_started # Don't try to fail if upgrade already started/succeeded
+
       @closed = true
-      @context.response.status_code = status
-      @context.response.content_type = "text/plain"
-      @context.response.print(message)
-      @context.response.close
-      @upgrade_complete.send(false)
+
+      # Only try to write error response if headers haven't been sent
+      begin
+        @context.response.status_code = status
+        @context.response.content_type = "text/plain"
+        @context.response.print(message)
+        @context.response.close
+      rescue ex : IO::Error
+        # Headers already sent (upgrade may have succeeded), just log and continue
+        Log.debug { "WebSocket #{@id} fail_upgrade skipped - connection already upgraded" }
+      end
+
+      # Signal failure (may not be received if upgrade already succeeded)
+      begin
+        @upgrade_complete.send(false)
+      rescue Channel::ClosedError
+        # Channel already closed, ignore
+      end
     end
 
     # Wait for upgrade to complete
@@ -73,8 +94,19 @@ module Sellia::Server
       when result = @upgrade_complete.receive
         result
       when timeout(timeout)
-        Log.warn { "WebSocket upgrade timeout for #{@id}" }
-        fail_upgrade(504, "WebSocket upgrade timeout")
+        # Check if upgrade already succeeded (race condition with spawned fiber)
+        if @upgrade_succeeded
+          Log.debug { "WebSocket upgrade #{@id} succeeded (timeout fired late)" }
+          return true
+        end
+
+        # Only log warning and fail if upgrade hasn't started
+        unless @upgrade_started
+          Log.warn { "WebSocket upgrade timeout for #{@id}" }
+          fail_upgrade(504, "WebSocket upgrade timeout")
+        else
+          Log.debug { "WebSocket upgrade #{@id} in progress when timeout fired" }
+        end
         false
       end
     end
