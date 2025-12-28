@@ -1,13 +1,24 @@
 name: sellia
 version: 0.1.0
+license: MIT
 
 authors:
-  - Chris Watson <cawatson1993@gmail.com>
+  - Chris Watson <chris@watzon.me>
+
+crystal: ">= 1.10.0"
+
+dependencies:
+  msgpack:
+    github: crystal-community/msgpack-crystal
+  sqlite3:
+    github: crystal-lang/crystal-sqlite3
 
 targets:
   sellia:
-    main: src/sellia.cr
+    main: src/cli/main.cr
+  sellia-server:
+    main: src/server/main.cr
 
-crystal: '>= 1.18.2'
-
-license: MIT
+development_dependencies:
+  spectator:
+    github: icy-arctic-fox/spectator
