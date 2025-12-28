@@ -1,13 +1,18 @@
-# Production overrides for docker-compose.yml
+# Production deployment with Caddy reverse proxy
 #
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Usage: docker compose -f docker-compose.prod.yml up -d
 #
-# This file adds Caddy as a reverse proxy with automatic HTTPS
+# TLS Modes:
+#   1. Cloudflare DNS (recommended): Set CLOUDFLARE_API_TOKEN in .env
+#      - Instant wildcard cert, no delay on first request
+#   2. On-Demand TLS (fallback): No Cloudflare token needed
+#      - First request to new subdomain takes ~5-10s for cert
 
 services:
   sellia-server:
     image: ghcr.io/watzon/sellia:latest
-    ports: []
+    container_name: sellia-server
+    restart: unless-stopped
     env_file: .env
     networks:
       - sellia-internal
@@ -16,7 +21,8 @@ services:
       - SELLIA_REQUIRE_AUTH=true
 
   caddy:
-    image: caddy:2-alpine
+    # Use Cloudflare-enabled Caddy image (works without CF too)
+    image: ghcr.io/caddybuilds/caddy-cloudflare:alpine
     container_name: sellia-caddy
     restart: unless-stopped
     ports:
@@ -27,6 +33,9 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      - SELLIA_DOMAIN=${SELLIA_DOMAIN:-localhost}
     networks:
       - sellia-internal
     depends_on:

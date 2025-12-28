@@ -187,6 +187,49 @@ Features:
 
 Disable with `--no-inspector` if not needed.
 
+## Deployment
+
+### Docker Compose
+
+The easiest way to deploy Sellia is with Docker Compose:
+
+```bash
+# Clone and configure
+git clone https://github.com/watzon/sellia.git
+cd sellia
+
+# Create .env file
+cat > .env << EOF
+SELLIA_DOMAIN=to.yourdomain.com
+SELLIA_MASTER_KEY=$(openssl rand -hex 32)
+SELLIA_REQUIRE_AUTH=true
+SELLIA_USE_HTTPS=true
+EOF
+
+# Start the server
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### TLS Configuration
+
+Sellia supports two TLS modes:
+
+#### Cloudflare DNS (Recommended)
+
+Uses wildcard certificates - instant HTTPS for all subdomains:
+
+1. Create a [Cloudflare API token](https://dash.cloudflare.com/profile/api-tokens) with `Zone:DNS:Edit` permission
+2. Add to `.env`: `CLOUDFLARE_API_TOKEN=your-token-here`
+3. Copy the Cloudflare Caddyfile: `cp deploy/Caddyfile.cloudflare deploy/Caddyfile`
+4. Restart: `docker compose -f docker-compose.prod.yml up -d`
+
+#### On-Demand TLS (Default)
+
+Certificates obtained per-subdomain on first request (~5-10s delay):
+
+- Works out of the box, no additional configuration needed
+- Uses `deploy/Caddyfile.ondemand` (default)
+
 ## Development
 
 ### Prerequisites
