@@ -1,0 +1,13 @@
+name: sellia
+version: 0.1.0
+
+authors:
+  - Chris Watson <cawatson1993@gmail.com>
+
+targets:
+  sellia:
+    main: src/sellia.cr
+
+crystal: '>= 1.18.2'
+
+license: MIT
