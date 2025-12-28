@@ -8,6 +8,7 @@ services:
   sellia-server:
     image: ghcr.io/watzon/sellia:latest
     ports: []
+    env_file: .env
     networks:
       - sellia-internal
     environment:
