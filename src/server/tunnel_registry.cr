@@ -55,7 +55,7 @@ module Sellia::Server
     end
 
     def find_by_client(client_id : String) : Array(Tunnel)
-      @mutex.synchronize { @by_client[client_id]? || [] of Tunnel }
+      @mutex.synchronize { @by_client[client_id]?.try(&.dup) || [] of Tunnel }
     end
 
     def subdomain_available?(subdomain : String) : Bool
@@ -63,11 +63,11 @@ module Sellia::Server
     end
 
     def generate_subdomain : String
-      loop do
-        # Generate random 8-char subdomain
+      1000.times do
         subdomain = Random::Secure.hex(4)
         return subdomain if subdomain_available?(subdomain)
       end
+      raise "Failed to generate unique subdomain after 1000 attempts"
     end
 
     def size : Int32
