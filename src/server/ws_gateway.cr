@@ -80,7 +80,8 @@ module Sellia::Server
     end
 
     private def handle_tunnel_open(client : ClientConnection, message : Protocol::Messages::TunnelOpen)
-      unless client.authenticated
+      # If auth is required, client must be authenticated
+      if @auth_provider.require_auth && !client.authenticated
         client.send(Protocol::Messages::AuthError.new("Not authenticated"))
         return
       end

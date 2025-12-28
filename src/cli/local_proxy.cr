@@ -42,7 +42,12 @@ module Sellia::CLI
           response_headers[key] = values.first
         end
 
-        {response.status_code, response_headers, response.body_io}
+        # Read the full body into memory before closing the client
+        # This is necessary because body_io becomes invalid after client.close
+        body_content = response.body
+        body_io = IO::Memory.new(body_content)
+
+        {response.status_code, response_headers, body_io.as(IO)}
       ensure
         client.close
       end
