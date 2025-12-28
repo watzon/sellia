@@ -107,12 +107,44 @@ module Sellia::Server
     end
 
     private def serve_root(context : HTTP::Server::Context)
-      if context.request.path == "/health"
+      case context.request.path
+      when "/health"
         context.response.content_type = "application/json"
         context.response.print(%({"status":"ok","tunnels":#{@tunnel_registry.size}}))
+      when "/tunnel/verify"
+        # Caddy on-demand TLS verification endpoint
+        # Returns 200 if subdomain has active tunnel, 404 otherwise
+        verify_tunnel_for_tls(context)
       else
         context.response.content_type = "text/plain"
         context.response.print("Sellia Tunnel Server\n\nConnect with: sellia http <port>")
+      end
+    end
+
+    # Verify if a domain should get a TLS certificate (for Caddy on-demand TLS)
+    private def verify_tunnel_for_tls(context : HTTP::Server::Context)
+      domain_param = context.request.query_params["domain"]?
+
+      unless domain_param
+        context.response.status_code = 400
+        context.response.content_type = "text/plain"
+        context.response.print("Missing domain parameter")
+        return
+      end
+
+      # Extract subdomain from the full domain
+      subdomain = extract_subdomain(domain_param)
+
+      if subdomain && @tunnel_registry.find_by_subdomain(subdomain)
+        # Active tunnel exists - allow certificate
+        context.response.status_code = 200
+        context.response.content_type = "text/plain"
+        context.response.print("OK")
+      else
+        # No active tunnel - deny certificate
+        context.response.status_code = 404
+        context.response.content_type = "text/plain"
+        context.response.print("No active tunnel for #{domain_param}")
       end
     end
 
