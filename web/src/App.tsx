@@ -17,23 +17,34 @@ function App() {
   const [requests, setRequests] = useState<Request[]>([])
   const [selected, setSelected] = useState<Request | null>(null)
   const [connected, setConnected] = useState(false)
+  const [reconnectCounter, setReconnectCounter] = useState(0)
 
   useEffect(() => {
     // Connect to inspector WebSocket
     const ws = new WebSocket(`ws://${window.location.host}/api/live`)
 
     ws.onopen = () => setConnected(true)
-    ws.onclose = () => setConnected(false)
+    ws.onclose = () => {
+      setConnected(false)
+      // Reconnect after 3 seconds
+      setTimeout(() => {
+        setReconnectCounter(prev => prev + 1)
+      }, 3000)
+    }
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === 'request') {
-        setRequests(prev => [data.request, ...prev].slice(0, 1000))
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'request') {
+          setRequests(prev => [data.request, ...prev].slice(0, 1000))
+        }
+      } catch (e) {
+        console.error('Failed to parse message:', e)
       }
     }
 
     return () => ws.close()
-  }, [])
+  }, [reconnectCounter])
 
   const statusColor = (code: number) => {
     if (code < 300) return 'text-green-500'
