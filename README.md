@@ -113,7 +113,7 @@ sellia http 3000 --subdomain myapp
 sellia http 3000 --auth admin:secret
 
 # Using a specific server
-sellia http 3000 --server https://to.sellia.me
+sellia http 3000 --server https://sellia.me
 ```
 
 ### Server
@@ -156,7 +156,7 @@ Sellia supports layered configuration. Files are loaded in order (later override
 **Example `sellia.yml`:**
 
 ```yaml
-server: https://to.sellia.me
+server: https://sellia.me
 api_key: your-api-key
 
 tunnels:

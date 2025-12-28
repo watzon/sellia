@@ -20,6 +20,7 @@ module Sellia::Server
     property master_key : String?
     property use_https : Bool
     property rate_limiting : Bool
+    property landing_enabled : Bool
 
     @tunnel_registry : TunnelRegistry
     @connection_manager : ConnectionManager
@@ -39,6 +40,7 @@ module Sellia::Server
       @master_key : String? = nil,
       @use_https : Bool = false,
       @rate_limiting : Bool = true,
+      @landing_enabled : Bool = true,
     )
       @tunnel_registry = TunnelRegistry.new
       @connection_manager = ConnectionManager.new
@@ -62,7 +64,8 @@ module Sellia::Server
         connection_manager: @connection_manager,
         pending_requests: @pending_requests,
         rate_limiter: @rate_limiter,
-        domain: @domain
+        domain: @domain,
+        landing_enabled: @landing_enabled
       )
     end
 
@@ -132,6 +135,7 @@ module Sellia::Server
     master_key = ENV["SELLIA_MASTER_KEY"]?
     use_https = ENV["SELLIA_USE_HTTPS"]? == "true"
     rate_limiting = ENV["SELLIA_RATE_LIMITING"]? != "false"
+    landing_enabled = ENV["SELLIA_DISABLE_LANDING"]? != "true"
 
     # Parse command-line options (override env vars)
     OptionParser.parse do |parser|
@@ -147,6 +151,7 @@ module Sellia::Server
       end
       parser.on("--https", "Generate HTTPS URLs for tunnels") { use_https = true }
       parser.on("--no-rate-limit", "Disable rate limiting") { rate_limiting = false }
+      parser.on("--no-landing", "Disable the landing page") { landing_enabled = false }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -170,7 +175,8 @@ module Sellia::Server
       require_auth: require_auth,
       master_key: master_key,
       use_https: use_https,
-      rate_limiting: rate_limiting
+      rate_limiting: rate_limiting,
+      landing_enabled: landing_enabled
     ).start
   end
 end

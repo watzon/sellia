@@ -4,6 +4,7 @@ require "./tunnel_registry"
 require "./connection_manager"
 require "./pending_request"
 require "./rate_limiter"
+require "./landing"
 require "../core/protocol"
 
 module Sellia::Server
@@ -14,6 +15,7 @@ module Sellia::Server
     property rate_limiter : CompositeRateLimiter
     property domain : String
     property request_timeout : Time::Span
+    property landing_enabled : Bool
 
     def initialize(
       @tunnel_registry : TunnelRegistry,
@@ -22,6 +24,7 @@ module Sellia::Server
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @request_timeout : Time::Span = 30.seconds,
+      @landing_enabled : Bool = true,
     )
     end
 
@@ -116,8 +119,13 @@ module Sellia::Server
         # Returns 200 if subdomain has active tunnel, 404 otherwise
         verify_tunnel_for_tls(context)
       else
-        context.response.content_type = "text/plain"
-        context.response.print("Sellia Tunnel Server\n\nConnect with: sellia http <port>")
+        # Serve landing page if enabled, otherwise simple text response
+        if @landing_enabled && Landing.serve(context)
+          # Landing page served successfully
+        else
+          context.response.content_type = "text/plain"
+          context.response.print("Sellia Tunnel Server\n\nConnect with: sellia http <port>")
+        end
       end
     end
 
