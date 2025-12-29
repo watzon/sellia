@@ -125,7 +125,7 @@ describe Sellia::Protocol::Messages::RequestStart do
       tunnel_id: "tun-456",
       method: "POST",
       path: "/api/users",
-      headers: {"Content-Type" => "application/json", "X-Custom" => "value"}
+      headers: {"Content-Type" => ["application/json"], "X-Custom" => ["value"]}
     )
 
     packed = original.to_msgpack
@@ -136,8 +136,8 @@ describe Sellia::Protocol::Messages::RequestStart do
     msg.tunnel_id.should eq("tun-456")
     msg.method.should eq("POST")
     msg.path.should eq("/api/users")
-    msg.headers["Content-Type"].should eq("application/json")
-    msg.headers["X-Custom"].should eq("value")
+    msg.headers["Content-Type"].should eq(["application/json"])
+    msg.headers["X-Custom"].should eq(["value"])
   end
 end
 
@@ -165,7 +165,7 @@ describe Sellia::Protocol::Messages::ResponseStart do
     original = Sellia::Protocol::Messages::ResponseStart.new(
       request_id: "req-123",
       status_code: 200,
-      headers: {"Content-Type" => "application/json"}
+      headers: {"Content-Type" => ["application/json"]}
     )
 
     packed = original.to_msgpack
@@ -174,7 +174,7 @@ describe Sellia::Protocol::Messages::ResponseStart do
     msg = unpacked.as(Sellia::Protocol::Messages::ResponseStart)
     msg.request_id.should eq("req-123")
     msg.status_code.should eq(200)
-    msg.headers["Content-Type"].should eq("application/json")
+    msg.headers["Content-Type"].should eq(["application/json"])
   end
 end
 
