@@ -33,6 +33,22 @@ module Sellia::CLI
       end
     end
 
+    class RouteConfig
+      include YAML::Serializable
+
+      @[YAML::Field(key: "path")]
+      property path : String
+
+      @[YAML::Field(key: "port")]
+      property port : Int32
+
+      @[YAML::Field(key: "host")]
+      property host : String?
+
+      def initialize(@path : String, @port : Int32, @host : String? = nil)
+      end
+    end
+
     class TunnelConfig
       include YAML::Serializable
 
@@ -51,12 +67,16 @@ module Sellia::CLI
       @[YAML::Field(key: "local_host")]
       property local_host : String = "localhost"
 
+      @[YAML::Field(key: "routes")]
+      property routes : Array(RouteConfig) = [] of RouteConfig
+
       def initialize(
-        @port : Int32,
+        @port : Int32 = 0,
         @type : String = "http",
         @subdomain : String? = nil,
         @auth : String? = nil,
         @local_host : String = "localhost",
+        @routes : Array(RouteConfig) = [] of RouteConfig,
       )
       end
     end
