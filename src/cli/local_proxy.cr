@@ -14,12 +14,18 @@ module Sellia::CLI
 
     # Forward an HTTP request to the local service.
     # Returns a tuple of (status_code, response_headers, response_body_io)
+    # Optional host and port parameters allow routing to a different target.
     def forward(
       method : String,
       path : String,
       headers : Hash(String, Array(String)),
       body : IO?,
+      host : String? = nil,
+      port : Int32? = nil,
     ) : {Int32, Hash(String, Array(String)), IO}
+      target_host = host || @host
+      target_port = port || @port
+
       # Build HTTP::Headers from hash, filtering hop-by-hop headers
       http_headers = HTTP::Headers.new
       headers.each do |key, values|
@@ -29,7 +35,7 @@ module Sellia::CLI
       end
 
       # Make request to local service
-      client = HTTP::Client.new(@host, @port)
+      client = HTTP::Client.new(target_host, target_port)
       client.connect_timeout = 5.seconds
       client.read_timeout = 30.seconds
 
@@ -52,7 +58,7 @@ module Sellia::CLI
         client.close
       end
     rescue ex : Socket::ConnectError
-      error_body = IO::Memory.new("Local service unavailable at #{@host}:#{@port}")
+      error_body = IO::Memory.new("Local service unavailable at #{target_host}:#{target_port}")
       {502, {"Content-Type" => ["text/plain"]}, error_body.as(IO)}
     rescue ex : IO::TimeoutError
       error_body = IO::Memory.new("Request to local service timed out")
