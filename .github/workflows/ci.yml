@@ -1,13 +1,14 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -38,9 +39,6 @@ jobs:
       - name: Run tests
         run: crystal spec
 
-      - name: Build binaries
-        run: shards build
-
   web:
     runs-on: ubuntu-latest
 
@@ -62,12 +60,151 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
+      - name: Build web assets
         run: npm run build
+
+  build-binaries:
+    name: Build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
+    needs: [test, web]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux AMD64 - CLI and Server
+          - os: linux
+            arch: amd64
+            binary: sellia
+            runner: ubuntu-24.04
+            alpine_image: amd64/alpine
+          - os: linux
+            arch: amd64
+            binary: sellia-server
+            runner: ubuntu-24.04
+            alpine_image: amd64/alpine
+          # Linux ARM64 - CLI and Server
+          - os: linux
+            arch: arm64
+            binary: sellia
+            runner: ubuntu-24.04-arm
+            alpine_image: arm64v8/alpine
+          - os: linux
+            arch: arm64
+            binary: sellia-server
+            runner: ubuntu-24.04-arm
+            alpine_image: arm64v8/alpine
+          # macOS Intel - CLI only
+          - os: darwin
+            arch: amd64
+            binary: sellia
+            runner: macos-13
+          # macOS Apple Silicon - CLI only
+          - os: darwin
+            arch: arm64
+            binary: sellia
+            runner: macos-15
+          # Windows - CLI only
+          - os: windows
+            arch: amd64
+            binary: sellia
+            runner: windows-2022
+
+    runs-on: ${{ matrix.runner }}
+    env:
+      FILENAME: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Web assets for CLI builds
+      - name: Setup Node.js
+        if: matrix.binary == 'sellia'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build web assets
+        if: matrix.binary == 'sellia'
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      # Linux builds - static via Alpine container
+      - name: Build (Linux)
+        if: matrix.os == 'linux'
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: none
+          distro: none
+          base_image: ${{ matrix.alpine_image }}
+          shell: /bin/sh
+          install: |
+            apk update
+            apk add --no-cache \
+              crystal shards \
+              gcc musl-dev \
+              openssl-dev openssl-libs-static \
+              yaml-static zlib-static \
+              pcre2-dev pcre2-static \
+              gc-dev libevent-static \
+              make git
+          run: |
+            shards install --without-development
+            if [ "${{ matrix.binary }}" = "sellia" ]; then
+              shards build ${{ matrix.binary }} --release --static -Dembed_assets
+            else
+              shards build ${{ matrix.binary }} --release --static
+            fi
+            cp bin/${{ matrix.binary }} ${{ env.FILENAME }}
+
+      # macOS builds
+      - name: Install Crystal (macOS)
+        if: matrix.os == 'darwin'
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Build (macOS)
+        if: matrix.os == 'darwin'
+        run: |
+          brew install openssl@3
+          brew unlink openssl@1.1 || true
+          brew link --force --overwrite openssl@3
+
+          export PATH="/opt/homebrew/opt/openssl@3/bin:/usr/local/opt/openssl@3/bin:$PATH"
+          export LDFLAGS="-L/opt/homebrew/opt/openssl@3/lib -L/usr/local/opt/openssl@3/lib"
+          export CPPFLAGS="-I/opt/homebrew/opt/openssl@3/include -I/usr/local/opt/openssl@3/include"
+          export PKG_CONFIG_PATH="/opt/homebrew/opt/openssl@3/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig"
+
+          shards install --without-development
+          shards build ${{ matrix.binary }} --release -Dembed_assets
+          cp bin/${{ matrix.binary }} ${{ env.FILENAME }}
+
+      # Windows builds
+      - name: Install Crystal (Windows)
+        if: matrix.os == 'windows'
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          shards install --without-development
+          shards build ${{ matrix.binary }} --release -Dembed_assets
+          Copy-Item "bin\${{ matrix.binary }}.exe" "${{ env.FILENAME }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILENAME }}
+          path: ${{ env.FILENAME }}
+          retention-days: 45
 
   docker:
     runs-on: ubuntu-latest
-    needs: [build, web]
+    needs: [test, web]
 
     steps:
       - name: Checkout code
