@@ -11,6 +11,8 @@ interface Request {
   requestBody?: string
   responseHeaders: Record<string, string>
   responseBody?: string
+  matchedRoute?: string
+  matchedTarget?: string
 }
 
 function App() {
@@ -116,6 +118,11 @@ function App() {
                   <span className="font-mono text-sm truncate flex-1">
                     {req.path}
                   </span>
+                  {req.matchedTarget && (
+                    <span className="text-xs text-gray-500 font-mono">
+                      → {req.matchedTarget}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-500">
                     {req.duration}ms
                   </span>
@@ -147,6 +154,15 @@ function App() {
                   {JSON.stringify(selected.requestHeaders, null, 2)}
                 </pre>
               </section>
+
+              {selected.matchedRoute && (
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-2">Route</h3>
+                  <div className="bg-gray-800 p-3 rounded text-sm font-mono">
+                    {selected.matchedRoute} → {selected.matchedTarget}
+                  </div>
+                </section>
+              )}
 
               {selected.requestBody && (
                 <section>
