@@ -38,6 +38,18 @@ services:
     depends_on:
       - sellia-server
 
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: sellia-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_INCLUDE_STOPPED=false
+    command: sellia-server sellia-caddy
+
 networks:
   sellia-internal:
     driver: bridge
