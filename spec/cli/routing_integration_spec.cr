@@ -1,7 +1,6 @@
 require "../spec_helper"
 require "../../src/cli/config"
 require "../../src/cli/router"
-require "../../src/cli/local_proxy"
 
 describe "Path-based routing integration" do
   it "routes requests to different backends based on path" do
