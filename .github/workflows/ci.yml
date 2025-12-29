@@ -133,14 +133,9 @@ jobs:
       # Linux builds - static via Alpine container
       - name: Build (Linux)
         if: matrix.os == 'linux'
-        uses: uraimo/run-on-arch-action@v2
-        with:
-          arch: none
-          distro: none
-          base_image: ${{ matrix.alpine_image }}
-          shell: /bin/sh
-          install: |
-            apk update
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace ${{ matrix.alpine_image }} sh -c '
+            apk update &&
             apk add --no-cache \
               crystal shards \
               gcc musl-dev \
@@ -149,15 +144,15 @@ jobs:
               pcre2-dev pcre2-static \
               gc-dev gc-static \
               libevent-dev libevent-static \
-              make git
-          run: |
-            shards install --without-development
+              make git &&
+            shards install --without-development &&
             if [ "${{ matrix.binary }}" = "sellia" ]; then
               shards build ${{ matrix.binary }} --release --static -Dembed_assets
             else
               shards build ${{ matrix.binary }} --release --static
-            fi
+            fi &&
             cp bin/${{ matrix.binary }} ${{ env.FILENAME }}
+          '
 
       # macOS builds
       - name: Install Crystal (macOS)
