@@ -666,6 +666,25 @@ h2 {
   color: var(--crystal-light);
 }
 
+.install-alt {
+  text-align: center;
+  margin-top: 2rem;
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
+.install-alt a {
+  color: var(--crystal-light);
+  text-decoration: none;
+  border-bottom: 1px solid var(--crystal-primary);
+  transition: all 0.3s ease;
+}
+
+.install-alt a:hover {
+  color: var(--crystal-glow);
+  border-bottom-color: var(--crystal-glow);
+}
+
 /* CTA Section */
 .cta {
   padding: 8rem 2rem;

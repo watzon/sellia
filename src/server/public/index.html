@@ -178,8 +178,8 @@
           <div class="step">
             <div class="step-number">1</div>
             <div class="step-content">
-              <h4>Install from Source</h4>
-              <p>Clone the repository and build with Crystal. Requires Crystal >= 1.10.0.</p>
+              <h4>Install Sellia</h4>
+              <p>One command to install. Works on macOS, Linux, and Windows.</p>
             </div>
           </div>
           <div class="step">
@@ -204,21 +204,23 @@
             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
           </div>
           <div class="code-body">
-<span class="code-comment"># Clone and build</span>
-git clone https://github.com/watzon/sellia.git
-cd sellia
-shards build <span class="code-flag">--release</span>
+<span class="code-comment"># Install Sellia</span>
+curl -fsSL https://sellia.me/install.sh | bash
 
 <span class="code-comment"># Create a tunnel to your local server</span>
-./bin/sellia http 3000
+sellia http 3000
 
 <span class="code-comment"># With custom subdomain</span>
-./bin/sellia http 3000 <span class="code-flag">--subdomain</span> myapp
+sellia http 3000 <span class="code-flag">--subdomain</span> myapp
 
 <span class="code-comment"># With basic auth protection</span>
-./bin/sellia http 3000 <span class="code-flag">--auth</span> admin:secret
+sellia http 3000 <span class="code-flag">--auth</span> admin:secret
           </div>
         </div>
+
+        <p class="install-alt">
+          Or <a href="https://github.com/watzon/sellia/releases" target="_blank" rel="noopener">download binaries</a> directly from GitHub Releases.
+        </p>
       </div>
     </section>
 
