@@ -498,7 +498,27 @@ module Sellia::CLI
     private def handle_websocket_upgrade(message : Protocol::Messages::WebSocketUpgrade)
       Log.debug { "WebSocket upgrade request: #{message.path}" }
 
-      ws_proxy = WebSocketProxy.new(message.request_id, @local_host, @local_port)
+      # Route the WebSocket request
+      match_result = @router.match(message.path)
+
+      target_host = @local_host
+      target_port = @local_port
+
+      if match = match_result
+        target_host = match.target.host
+        target_port = match.target.port
+        Log.debug { "WebSocket routed #{message.path} to #{target_host}:#{target_port} via #{match.pattern}" }
+      else
+        # No route matched
+        send_message(Protocol::Messages::WebSocketUpgradeError.new(
+          request_id: message.request_id,
+          status_code: 502,
+          message: "No route matched path: #{message.path}"
+        ))
+        return
+      end
+
+      ws_proxy = WebSocketProxy.new(message.request_id, target_host, target_port)
 
       # Set up frame forwarding to server
       ws_proxy.on_frame do |opcode, payload|
