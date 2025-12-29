@@ -24,6 +24,7 @@ Sellia exposes your local development servers to the internet through secure tun
 ## Background
 
 Exposing local servers to the internet is essential for:
+
 - Webhook development (Stripe, GitHub, etc.)
 - Mobile app development against local APIs
 - Sharing work-in-progress with clients
@@ -32,6 +33,7 @@ Exposing local servers to the internet is essential for:
 Existing solutions like ngrok are excellent but can be expensive for individual developers. Sellia provides a fully open-source, self-hostable alternative with a familiar interface.
 
 **Features:**
+
 - Subdomain-based routing (`myapp.your-domain.com`)
 - Real-time request inspector with web UI
 - Automatic reconnection with exponential backoff
@@ -52,6 +54,7 @@ shards build --release
 ```
 
 Binaries will be in `./bin/`:
+
 - `sellia` - CLI client
 - `sellia-server` - Tunnel server
 
@@ -133,16 +136,16 @@ Options:
 
 **Environment Variables:**
 
-| Variable | Description |
-|----------|-------------|
-| `SELLIA_HOST` | Host to bind to |
-| `SELLIA_PORT` | Port to listen on |
-| `SELLIA_DOMAIN` | Base domain for subdomains |
-| `SELLIA_REQUIRE_AUTH` | Require authentication (`true`/`false`) |
-| `SELLIA_MASTER_KEY` | Master API key |
-| `SELLIA_USE_HTTPS` | Generate HTTPS URLs (`true`/`false`) |
-| `SELLIA_RATE_LIMITING` | Enable rate limiting (`true`/`false`) |
-| `SELLIA_DEBUG` | Enable debug logging (`true`/`false`) |
+| Variable               | Description                             |
+| ---------------------- | --------------------------------------- |
+| `SELLIA_HOST`          | Host to bind to                         |
+| `SELLIA_PORT`          | Port to listen on                       |
+| `SELLIA_DOMAIN`        | Base domain for subdomains              |
+| `SELLIA_REQUIRE_AUTH`  | Require authentication (`true`/`false`) |
+| `SELLIA_MASTER_KEY`    | Master API key                          |
+| `SELLIA_USE_HTTPS`     | Generate HTTPS URLs (`true`/`false`)    |
+| `SELLIA_RATE_LIMITING` | Enable rate limiting (`true`/`false`)   |
+| `SELLIA_DEBUG`         | Enable debug logging (`true`/`false`)   |
 
 ### Configuration
 
@@ -180,6 +183,7 @@ sellia start
 Sellia includes a real-time request inspector accessible at `http://localhost:4040` when a tunnel is running.
 
 Features:
+
 - Live request/response streaming
 - Request details (headers, body, timing)
 - Copy as cURL command
@@ -200,7 +204,7 @@ cd sellia
 
 # Create .env file
 cat > .env << EOF
-SELLIA_DOMAIN=to.yourdomain.com
+SELLIA_DOMAIN=yourdomain.com
 SELLIA_MASTER_KEY=$(openssl rand -hex 32)
 SELLIA_REQUIRE_AUTH=true
 SELLIA_USE_HTTPS=true
