@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-12-28
+
+### Added
+- Install script for curl-pipe-to-bash installation
+- `sellia update` command for self-updating CLI
+- ECR template for dynamic version display on landing page
+
+### Changed
+- Update quickstart docs with curl install method
+
+### Fixed
+- Pin watchtower to v1.7.1 for Docker API compatibility
+
 ## [0.3.0] - 2025-12-28
 
 ### Added
@@ -84,7 +97,8 @@ Initial release.
 - GitHub Actions for CI and multi-arch Docker builds
 - Production hardening features (health checks, timeouts, graceful shutdown)
 
-[Unreleased]: https://github.com/watzon/sellia/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/watzon/sellia/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/watzon/sellia/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/watzon/sellia/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/watzon/sellia/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/watzon/sellia/compare/v0.2.1...v0.2.2
