@@ -5,8 +5,8 @@ require "../core/version"
 
 module Sellia::CLI
   class Updater
-    REPO          = "watzon/sellia"
-    GITHUB_API    = "https://api.github.com"
+    REPO            = "watzon/sellia"
+    GITHUB_API      = "https://api.github.com"
     GITHUB_DOWNLOAD = "https://github.com"
 
     struct Release
