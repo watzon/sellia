@@ -109,11 +109,29 @@ module Sellia::CLI
 
     client.on_connect do |url|
       puts ""
-      puts "#{"Public URL:".colorize(:green).bold} #{url.colorize(:green).underline}"
-      unless no_inspector
-        puts "#{"Inspector:".colorize(:magenta).bold}  #{"http://127.0.0.1:#{inspector_port}".colorize(:magenta).underline}"
+      if client.routes.empty?
+        puts "#{"Public URL:".colorize(:green).bold} #{url.colorize(:green).underline} -> #{"#{local_host}:#{port}".colorize(:yellow)}"
+      else
+        puts "#{"Public URL:".colorize(:green).bold} #{url.colorize(:green).underline}"
+        puts ""
+        puts "#{"Routes:".colorize(:cyan).bold}"
+        # Calculate max path length for alignment
+        max_path_len = client.routes.map(&.path.size).max? || 10
+        max_path_len = {max_path_len, 10}.max
+        client.routes.each do |route|
+          target_host = route.host || local_host
+          puts "  #{route.path.ljust(max_path_len)} -> #{"#{target_host}:#{route.port}".colorize(:yellow)}"
+        end
+        # Show fallback only if port > 0 and no explicit /* route
+        if port > 0 && !client.routes.any? { |r| r.path == "/*" }
+          puts "  #{"/*".ljust(max_path_len)} -> #{"#{local_host}:#{port}".colorize(:yellow)} #{"(fallback)".colorize(:dark_gray)}"
+        end
       end
       puts ""
+      unless no_inspector
+        puts "#{"Inspector:".colorize(:magenta).bold}  #{"http://127.0.0.1:#{inspector_port}".colorize(:magenta).underline}"
+        puts ""
+      end
       puts "Press #{"Ctrl+C".colorize(:yellow)} to stop"
       puts ""
 
@@ -215,7 +233,22 @@ module Sellia::CLI
       )
 
       client.on_connect do |url|
-        puts "[#{name.colorize(:cyan)}] #{url.colorize(:green).underline} -> #{"#{tunnel_config.local_host}:#{tunnel_config.port}".colorize(:yellow)}"
+        if client.routes.empty?
+          puts "[#{name.colorize(:cyan)}] #{url.colorize(:green).underline} -> #{"#{tunnel_config.local_host}:#{tunnel_config.port}".colorize(:yellow)}"
+        else
+          puts "[#{name.colorize(:cyan)}] #{url.colorize(:green).underline}"
+          # Calculate max path length for alignment
+          max_path_len = client.routes.map(&.path.size).max? || 10
+          max_path_len = {max_path_len, 10}.max
+          client.routes.each do |route|
+            target_host = route.host || tunnel_config.local_host
+            puts "  #{route.path.ljust(max_path_len)} -> #{"#{target_host}:#{route.port}".colorize(:yellow)}"
+          end
+          # Show fallback only if port > 0 and no explicit /* route
+          if tunnel_config.port > 0 && !client.routes.any? { |r| r.path == "/*" }
+            puts "  #{"/*".ljust(max_path_len)} -> #{"#{tunnel_config.local_host}:#{tunnel_config.port}".colorize(:yellow)} #{"(fallback)".colorize(:dark_gray)}"
+          end
+        end
       end
 
       client.on_request do |req|
