@@ -6,6 +6,7 @@ require "./local_proxy"
 require "./websocket_proxy"
 require "./config"
 require "./request_store"
+require "./router"
 
 module Sellia::CLI
   # TunnelClient manages a WebSocket connection to the tunnel server
@@ -37,6 +38,7 @@ module Sellia::CLI
 
     @socket : HTTP::WebSocket?
     @proxy : LocalProxy
+    @router : Router
     @running : Bool = false
     @reconnect_attempts : Int32 = 0
     @send_mutex : Mutex = Mutex.new
@@ -63,8 +65,15 @@ module Sellia::CLI
       @subdomain : String? = nil,
       @auth : String? = nil,
       @request_store : RequestStore? = nil,
+      routes : Array(RouteConfig) = [] of RouteConfig,
     )
       @proxy = LocalProxy.new(@local_host, @local_port)
+      @router = Router.new(routes, @local_host, @local_port > 0 ? @local_port : nil)
+    end
+
+    # Get the configured routes for display
+    def routes : Array(RouteConfig)
+      @router.routes
     end
 
     # Set callback for when tunnel is connected and ready
@@ -344,13 +353,46 @@ module Sellia::CLI
       body_io.rewind
       body = body_io.size > 0 ? body_io : nil
 
+      # Route the request
+      match_result = @router.match(start_msg.path)
+
+      matched_route : String? = nil
+      matched_target : String? = nil
+      target_host = @local_host
+      target_port = @local_port
+
+      if match = match_result
+        matched_route = match.pattern
+        matched_target = "#{match.target.host}:#{match.target.port}"
+        target_host = match.target.host
+        target_port = match.target.port
+        Log.debug { "Routed #{start_msg.path} to #{matched_target} via #{matched_route}" }
+      else
+        # No route matched and no fallback
+        Log.warn { "No route matched for #{start_msg.path}" }
+        send_message(Protocol::Messages::ResponseStart.new(
+          request_id: request_id,
+          status_code: 502,
+          headers: {"Content-Type" => ["text/plain"]}
+        ))
+        error_msg = "No route matched path: #{start_msg.path}"
+        send_message(Protocol::Messages::ResponseBody.new(
+          request_id: request_id,
+          chunk: error_msg.to_slice
+        ))
+        send_message(Protocol::Messages::ResponseEnd.new(request_id: request_id))
+        return
+      end
+
       Log.debug { "Forwarding request #{request_id}: #{start_msg.method} #{start_msg.path}" }
 
       status_code, headers, response_body = @proxy.forward(
         start_msg.method,
         start_msg.path,
         start_msg.headers,
-        body
+        body,
+        target_host,
+        target_port
       )
 
       duration = (Time.monotonic - start_time).total_milliseconds
@@ -403,7 +445,9 @@ module Sellia::CLI
           request_headers: start_msg.headers,
           request_body: request_body_content,
           response_headers: headers,
-          response_body: response_body_content.empty? ? nil : response_body_content
+          response_body: response_body_content.empty? ? nil : response_body_content,
+          matched_route: matched_route,
+          matched_target: matched_target
         )
         store.add(stored_request)
       end
@@ -443,7 +487,9 @@ module Sellia::CLI
           request_headers: start_msg.try(&.headers) || {} of String => Array(String),
           request_body: nil,
           response_headers: {"Content-Type" => ["text/plain"]},
-          response_body: "Internal proxy error: #{ex.message}"
+          response_body: "Internal proxy error: #{ex.message}",
+          matched_route: matched_route,
+          matched_target: matched_target
         )
         store.add(stored_request)
       end
