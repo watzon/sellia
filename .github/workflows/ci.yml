@@ -96,7 +96,7 @@ jobs:
           - os: darwin
             arch: amd64
             binary: sellia
-            runner: macos-13
+            runner: macos-15-intel
           # macOS Apple Silicon - CLI only
           - os: darwin
             arch: arm64
