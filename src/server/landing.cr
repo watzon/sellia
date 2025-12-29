@@ -1,4 +1,5 @@
 require "http/server"
+require "ecr"
 
 {% if flag?(:release) %}
   require "baked_file_system"
@@ -22,9 +23,17 @@ module Sellia::Server
     # Path to public directory (for dev mode)
     PUBLIC_DIR = File.join(__DIR__, "public")
 
+    # Render the index page ECR template
+    ECR.def_to_s "#{__DIR__}/public/index.html.ecr"
+
     def serve(context : HTTP::Server::Context) : Bool
       path = context.request.path
-      path = "/index.html" if path == "/"
+
+      # Serve rendered index for root and /index.html
+      if path == "/" || path == "/index.html"
+        serve_index(context)
+        return true
+      end
 
       {% if flag?(:release) %}
         serve_baked(context, path)
@@ -33,13 +42,20 @@ module Sellia::Server
       {% end %}
     end
 
+    private def serve_index(context : HTTP::Server::Context)
+      context.response.content_type = "text/html; charset=utf-8"
+      context.response.headers["Cache-Control"] = "no-cache"
+      to_s(context.response)
+    end
+
     {% if flag?(:release) %}
       private def serve_baked(context : HTTP::Server::Context, path : String) : Bool
         file = LandingAssets.get?(path)
 
-        # SPA fallback - serve index.html for unknown paths (except assets)
+        # SPA fallback - serve rendered index for unknown paths (except assets)
         if file.nil? && !path.starts_with?("/assets/") && !has_extension?(path)
-          file = LandingAssets.get?("/index.html")
+          serve_index(context)
+          return true
         end
 
         if file
@@ -64,21 +80,19 @@ module Sellia::Server
           return false
         end
 
-        # Try the exact path first
-        file_path = safe_path
-
-        # If not found and not an asset path, try SPA fallback
-        if !File.exists?(file_path) && !path.starts_with?("/assets/") && !has_extension?(path)
-          file_path = File.join(PUBLIC_DIR, "index.html")
+        # SPA fallback - serve rendered index for unknown paths (except assets)
+        if !File.exists?(safe_path) && !path.starts_with?("/assets/") && !has_extension?(path)
+          serve_index(context)
+          return true
         end
 
-        if File.exists?(file_path) && File.file?(file_path)
+        if File.exists?(safe_path) && File.file?(safe_path)
           context.response.content_type = mime_type_for(path)
 
           # No caching in dev mode for easier iteration
           context.response.headers["Cache-Control"] = "no-cache"
 
-          File.open(file_path, "rb") do |file|
+          File.open(safe_path, "rb") do |file|
             IO.copy(file, context.response)
           end
           true
