@@ -36,6 +36,12 @@ module Sellia::CLI
     @[JSON::Field(key: "responseBody")]
     property response_body : String?
 
+    @[JSON::Field(key: "matchedRoute")]
+    property matched_route : String?
+
+    @[JSON::Field(key: "matchedTarget")]
+    property matched_target : String?
+
     def initialize(
       @id : String,
       @method : String,
@@ -47,6 +53,8 @@ module Sellia::CLI
       @request_body : String?,
       @response_headers : Hash(String, Array(String)),
       @response_body : String?,
+      @matched_route : String? = nil,
+      @matched_target : String? = nil,
     )
     end
   end
