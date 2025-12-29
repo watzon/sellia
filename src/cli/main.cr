@@ -156,6 +156,12 @@ module Sellia::CLI
       puts "[#{timestamp.colorize(:dark_gray)}] #{req.method.colorize(method_color).bold} #{req.path}"
     end
 
+    client.on_websocket do |path, _request_id|
+      timestamp = Time.local.to_s("%H:%M:%S")
+      clean_path = path.split('?').first
+      puts "[#{timestamp.colorize(:dark_gray)}] #{"WS".colorize(:magenta).bold} #{clean_path}"
+    end
+
     client.on_error do |error|
       STDERR.puts "#{"Error:".colorize(:red).bold} #{error}"
     end
@@ -262,6 +268,12 @@ module Sellia::CLI
                        else               :white
                        end
         puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{req.method.colorize(method_color).bold} #{req.path}"
+      end
+
+      client.on_websocket do |path, _request_id|
+        timestamp = Time.local.to_s("%H:%M:%S")
+        clean_path = path.split('?').first
+        puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{"WS".colorize(:magenta).bold} #{clean_path}"
       end
 
       client.on_error do |error|

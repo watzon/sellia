@@ -54,6 +54,7 @@ module Sellia::CLI
     # Callbacks
     @on_connect : (String ->)?
     @on_request : (Protocol::Messages::RequestStart ->)?
+    @on_websocket : (String, String ->)?  # (path, request_id)
     @on_disconnect : (->)?
     @on_error : (String ->)?
 
@@ -94,6 +95,11 @@ module Sellia::CLI
     # Set callback for errors
     def on_error(&block : String ->)
       @on_error = block
+    end
+
+    # Set callback for WebSocket connections
+    def on_websocket(&block : String, String ->)
+      @on_websocket = block
     end
 
     # Start the tunnel client - connects and begins processing
@@ -545,7 +551,8 @@ module Sellia::CLI
           request_id: message.request_id,
           headers: response_headers
         ))
-        Log.info { "WebSocket connected: #{message.path}" }
+        # Notify callback for logging
+        @on_websocket.try(&.call(message.path, message.request_id))
       else
         send_message(Protocol::Messages::WebSocketUpgradeError.new(
           request_id: message.request_id,

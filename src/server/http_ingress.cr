@@ -103,7 +103,14 @@ module Sellia::Server
     private def websocket_upgrade?(request : HTTP::Request) : Bool
       connection = request.headers["Connection"]?.try(&.downcase) || ""
       upgrade = request.headers["Upgrade"]?.try(&.downcase) || ""
-      connection.includes?("upgrade") && upgrade == "websocket"
+      is_ws = connection.includes?("upgrade") && upgrade == "websocket"
+
+      # Debug logging for WebSocket detection
+      unless is_ws
+        Log.debug { "Not a WebSocket upgrade: Connection=#{connection.inspect}, Upgrade=#{upgrade.inspect}" }
+      end
+
+      is_ws
     end
 
     private def proxy_websocket(context : HTTP::Server::Context, client : ClientConnection, tunnel : TunnelRegistry::Tunnel)
