@@ -147,7 +147,8 @@ jobs:
               openssl-dev openssl-libs-static \
               yaml-static zlib-static \
               pcre2-dev pcre2-static \
-              gc-dev libevent-static \
+              gc-dev gc-static \
+              libevent-dev libevent-static \
               make git
           run: |
             shards install --without-development
