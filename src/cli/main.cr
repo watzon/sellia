@@ -210,7 +210,8 @@ module Sellia::CLI
         api_key: config.api_key,
         local_host: tunnel_config.local_host,
         subdomain: tunnel_config.subdomain,
-        auth: tunnel_config.auth
+        auth: tunnel_config.auth,
+        routes: tunnel_config.routes
       )
 
       client.on_connect do |url|
