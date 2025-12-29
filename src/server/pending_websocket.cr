@@ -60,9 +60,8 @@ module Sellia::Server
         # socket.run is called by the handler
       end
 
-      spawn do
-        handler.call(@context)
-      end
+      # Call handler directly - HTTP::WebSocketHandler spawns its own fiber internally
+      handler.call(@context)
     end
 
     # Fail the WebSocket upgrade
