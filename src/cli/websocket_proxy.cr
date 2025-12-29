@@ -32,18 +32,18 @@ module Sellia::CLI
 
     # Attempt WebSocket upgrade to local service
     # Returns response headers on success, nil on failure
-    def connect(path : String, headers : Hash(String, String)) : Hash(String, String)?
+    def connect(path : String, headers : Hash(String, Array(String))) : Hash(String, Array(String))?
       uri = URI.new(scheme: "ws", host: @host, port: @port, path: path)
 
       # Build HTTP headers for upgrade, preserving WebSocket headers
       http_headers = HTTP::Headers.new
-      headers.each do |key, value|
+      headers.each do |key, values|
         key_lower = key.downcase
         # Keep WebSocket-specific headers, Host, and Origin
         if key_lower.starts_with?("sec-websocket-") ||
            key_lower == "host" ||
            key_lower == "origin"
-          http_headers[key] = value
+          values.each { |value| http_headers.add(key, value) }
         end
       end
 
@@ -66,7 +66,7 @@ module Sellia::CLI
         Log.debug { "WebSocket #{@request_id} connected to #{@host}:#{@port}#{path}" }
 
         # Return synthetic response headers (Crystal WS doesn't expose response headers)
-        {"Connection" => "Upgrade", "Upgrade" => "websocket"}
+        {"Connection" => ["Upgrade"], "Upgrade" => ["websocket"]}
       rescue ex : Socket::ConnectError
         Log.warn { "WebSocket connect failed for #{@request_id}: #{ex.message}" }
         nil

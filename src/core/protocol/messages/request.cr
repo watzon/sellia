@@ -8,14 +8,14 @@ module Sellia::Protocol::Messages
     property tunnel_id : String
     property method : String
     property path : String
-    property headers : Hash(String, String)
+    property headers : Hash(String, Array(String))
 
     def initialize(
       @request_id : String,
       @tunnel_id : String,
       @method : String,
       @path : String,
-      @headers : Hash(String, String),
+      @headers : Hash(String, Array(String)),
     )
     end
   end
@@ -36,12 +36,12 @@ module Sellia::Protocol::Messages
     property type : String = "response_start"
     property request_id : String
     property status_code : Int32
-    property headers : Hash(String, String)
+    property headers : Hash(String, Array(String))
 
     def initialize(
       @request_id : String,
       @status_code : Int32,
-      @headers : Hash(String, String),
+      @headers : Hash(String, Array(String)),
     )
     end
   end

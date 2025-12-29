@@ -420,7 +420,7 @@ module Sellia::CLI
       send_message(Protocol::Messages::ResponseStart.new(
         request_id: request_id,
         status_code: 500,
-        headers: {"Content-Type" => "text/plain"}
+        headers: {"Content-Type" => ["text/plain"]}
       ))
 
       error_bytes = "Internal proxy error: #{ex.message}".to_slice
@@ -440,9 +440,9 @@ module Sellia::CLI
           status_code: 500,
           duration: error_duration,
           timestamp: Time.utc,
-          request_headers: start_msg.try(&.headers) || {} of String => String,
+          request_headers: start_msg.try(&.headers) || {} of String => Array(String),
           request_body: nil,
-          response_headers: {"Content-Type" => "text/plain"},
+          response_headers: {"Content-Type" => ["text/plain"]},
           response_body: "Internal proxy error: #{ex.message}"
         )
         store.add(stored_request)

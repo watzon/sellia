@@ -36,16 +36,16 @@ module Sellia::Server
     end
 
     # Complete the WebSocket upgrade after client confirms local connection
-    def complete_upgrade(response_headers : Hash(String, String))
+    def complete_upgrade(response_headers : Hash(String, Array(String)))
       return if @closed
       return if @upgrade_started # Prevent double upgrade
 
       @upgrade_started = true
 
       # Set response headers from client (excluding hop-by-hop)
-      response_headers.each do |key, value|
+      response_headers.each do |key, values|
         next if hop_by_hop_header?(key)
-        @context.response.headers[key] = value
+        values.each { |value| @context.response.headers.add(key, value) }
       end
 
       # Signal success immediately to unblock wait_for_upgrade

@@ -111,10 +111,10 @@ module Sellia::Server
 
       Log.debug { "WebSocket upgrade #{request_id}: #{context.request.resource} -> tunnel #{tunnel.subdomain}" }
 
-      # Build headers including WebSocket-specific ones
-      headers = {} of String => String
+      # Build headers including WebSocket-specific ones, preserving all values
+      headers = {} of String => Array(String)
       context.request.headers.each do |key, values|
-        headers[key] = values.first
+        headers[key] = values
       end
 
       # Create pending WebSocket tracking
@@ -240,10 +240,10 @@ module Sellia::Server
       pending = PendingRequest.new(request_id, context, tunnel.id)
       @pending_requests.add(pending)
 
-      # Build headers hash
-      headers = {} of String => String
+      # Build headers hash, preserving all values
+      headers = {} of String => Array(String)
       context.request.headers.each do |key, values|
-        headers[key] = values.first
+        headers[key] = values
       end
 
       # Send request start to client

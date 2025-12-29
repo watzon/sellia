@@ -17,15 +17,15 @@ module Sellia::CLI
     def forward(
       method : String,
       path : String,
-      headers : Hash(String, String),
+      headers : Hash(String, Array(String)),
       body : IO?,
-    ) : {Int32, Hash(String, String), IO}
+    ) : {Int32, Hash(String, Array(String)), IO}
       # Build HTTP::Headers from hash, filtering hop-by-hop headers
       http_headers = HTTP::Headers.new
-      headers.each do |key, value|
+      headers.each do |key, values|
         # Skip hop-by-hop headers that shouldn't be forwarded
         next if hop_by_hop_header?(key)
-        http_headers[key] = value
+        values.each { |value| http_headers.add(key, value) }
       end
 
       # Make request to local service
@@ -36,10 +36,10 @@ module Sellia::CLI
       begin
         response = execute_request(client, method, path, http_headers, body)
 
-        # Convert response headers to hash
-        response_headers = {} of String => String
+        # Convert response headers to hash, preserving all values
+        response_headers = {} of String => Array(String)
         response.headers.each do |key, values|
-          response_headers[key] = values.first
+          response_headers[key] = values
         end
 
         # Read the full body into memory before closing the client
@@ -53,13 +53,13 @@ module Sellia::CLI
       end
     rescue ex : Socket::ConnectError
       error_body = IO::Memory.new("Local service unavailable at #{@host}:#{@port}")
-      {502, {"Content-Type" => "text/plain"}, error_body.as(IO)}
+      {502, {"Content-Type" => ["text/plain"]}, error_body.as(IO)}
     rescue ex : IO::TimeoutError
       error_body = IO::Memory.new("Request to local service timed out")
-      {504, {"Content-Type" => "text/plain"}, error_body.as(IO)}
+      {504, {"Content-Type" => ["text/plain"]}, error_body.as(IO)}
     rescue ex
       error_body = IO::Memory.new("Proxy error: #{ex.message}")
-      {500, {"Content-Type" => "text/plain"}, error_body.as(IO)}
+      {500, {"Content-Type" => ["text/plain"]}, error_body.as(IO)}
     end
 
     private def execute_request(

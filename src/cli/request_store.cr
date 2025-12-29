@@ -25,13 +25,13 @@ module Sellia::CLI
     property timestamp : Time
 
     @[JSON::Field(key: "requestHeaders")]
-    property request_headers : Hash(String, String)
+    property request_headers : Hash(String, Array(String))
 
     @[JSON::Field(key: "requestBody")]
     property request_body : String?
 
     @[JSON::Field(key: "responseHeaders")]
-    property response_headers : Hash(String, String)
+    property response_headers : Hash(String, Array(String))
 
     @[JSON::Field(key: "responseBody")]
     property response_body : String?
@@ -43,9 +43,9 @@ module Sellia::CLI
       @status_code : Int32,
       @duration : Int64,
       @timestamp : Time,
-      @request_headers : Hash(String, String),
+      @request_headers : Hash(String, Array(String)),
       @request_body : String?,
-      @response_headers : Hash(String, String),
+      @response_headers : Hash(String, Array(String)),
       @response_body : String?,
     )
     end

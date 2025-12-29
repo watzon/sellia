@@ -19,12 +19,12 @@ module Sellia::Server
       @channel = Channel(Nil).new
     end
 
-    def start_response(status_code : Int32, headers : Hash(String, String))
+    def start_response(status_code : Int32, headers : Hash(String, Array(String)))
       return if @closed
       @response_started = true
       @context.response.status_code = status_code
-      headers.each do |key, value|
-        @context.response.headers[key] = value
+      headers.each do |key, values|
+        values.each { |value| @context.response.headers.add(key, value) }
       end
     rescue ex : IO::Error
       # Client disconnected (Caddy canceled, browser navigated away, etc.)

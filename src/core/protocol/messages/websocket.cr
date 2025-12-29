@@ -7,13 +7,13 @@ module Sellia::Protocol::Messages
     property request_id : String
     property tunnel_id : String
     property path : String
-    property headers : Hash(String, String)
+    property headers : Hash(String, Array(String))
 
     def initialize(
       @request_id : String,
       @tunnel_id : String,
       @path : String,
-      @headers : Hash(String, String),
+      @headers : Hash(String, Array(String)),
     )
     end
   end
@@ -22,11 +22,11 @@ module Sellia::Protocol::Messages
   class WebSocketUpgradeOk < Message
     property type : String = "ws_upgrade_ok"
     property request_id : String
-    property headers : Hash(String, String)
+    property headers : Hash(String, Array(String))
 
     def initialize(
       @request_id : String,
-      @headers : Hash(String, String) = {} of String => String,
+      @headers : Hash(String, Array(String)) = {} of String => Array(String),
     )
     end
   end
