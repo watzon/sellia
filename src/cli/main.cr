@@ -5,6 +5,7 @@ require "./config"
 require "./tunnel_client"
 require "./request_store"
 require "./inspector"
+require "./updater"
 require "../core/version"
 
 module Sellia::CLI
@@ -23,6 +24,8 @@ module Sellia::CLI
       run_start
     when "auth"
       run_auth
+    when "update"
+      run_update
     when "version", "-v", "--version"
       puts "#{"Sellia".colorize(:cyan).bold} v#{Sellia::VERSION}"
     when "help", "-h", "--help", nil
@@ -359,6 +362,36 @@ module Sellia::CLI
     end
   end
 
+  private def self.run_update
+    check_only = false
+    force = false
+    target_version : String? = nil
+
+    OptionParser.parse do |parser|
+      parser.banner = "Usage: sellia update [options]"
+
+      parser.on("--check", "-c", "Check for updates without installing") { check_only = true }
+      parser.on("--force", "-f", "Force reinstall even if up-to-date") { force = true }
+      parser.on("--version VER", "-v VER", "Update to specific version") { |v| target_version = v }
+      parser.on("-h", "--help", "Show this help") { puts parser; exit 0 }
+
+      parser.invalid_option do |flag|
+        STDERR.puts "Unknown option: #{flag}"
+        STDERR.puts parser
+        exit 1
+      end
+    end
+
+    updater = Updater.new(
+      check_only: check_only,
+      force: force,
+      target_version: target_version
+    )
+
+    success = updater.run
+    exit(success ? 0 : 1)
+  end
+
   private def self.print_help
     puts "#{"Sellia".colorize(:cyan).bold} v#{Sellia::VERSION} - Secure tunnels to localhost"
     puts ""
@@ -369,6 +402,7 @@ module Sellia::CLI
     puts "  #{"http".colorize(:green)} <port>     Create HTTP tunnel to local port"
     puts "  #{"start".colorize(:green)}           Start tunnels from config file"
     puts "  #{"auth".colorize(:green)}            Manage authentication"
+    puts "  #{"update".colorize(:green)}          Update to latest version"
     puts "  #{"version".colorize(:green)}         Show version"
     puts "  #{"help".colorize(:green)}            Show this help"
     puts ""
