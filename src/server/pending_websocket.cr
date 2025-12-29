@@ -42,26 +42,28 @@ module Sellia::Server
 
       @upgrade_started = true
 
-      # Set response headers from client (excluding hop-by-hop)
-      response_headers.each do |key, values|
-        next if hop_by_hop_header?(key)
-        values.each { |value| @context.response.headers.add(key, value) }
-      end
+      Log.debug { "WebSocket #{@id}: starting upgrade via HTTP::WebSocketHandler" }
 
-      # Signal success immediately to unblock wait_for_upgrade
-      # This must happen BEFORE spawning since the spawned fiber may be delayed
-      @upgrade_complete.send(true)
-
-      # Perform WebSocket upgrade in background fiber
+      # Perform WebSocket upgrade - HTTP::WebSocketHandler handles the handshake
+      # Note: We ignore response_headers from the backend since the handshake is
+      # between the browser and this server, not the backend
       handler = HTTP::WebSocketHandler.new do |socket, ctx|
+        Log.debug { "WebSocket #{@id}: handler callback invoked, socket=#{socket.class}" }
         @socket = socket
         @upgrade_succeeded = true
         setup_handlers(socket)
+        Log.debug { "WebSocket #{@id}: handlers set up, socket.run will be called by handler" }
         # socket.run is called by the handler
       end
 
-      # Call handler directly - HTTP::WebSocketHandler spawns its own fiber internally
+      # Call handler directly - it spawns its own fiber internally
+      Log.debug { "WebSocket #{@id}: calling handler" }
       handler.call(@context)
+      Log.debug { "WebSocket #{@id}: handler.call returned" }
+
+      # Signal success AFTER handler.call completes the handshake
+      @upgrade_complete.send(true)
+      Log.debug { "WebSocket #{@id}: upgrade complete signal sent" }
     end
 
     # Fail the WebSocket upgrade
