@@ -42,28 +42,27 @@ module Sellia::Server
 
       @upgrade_started = true
 
-      Log.debug { "WebSocket #{@id}: starting upgrade via HTTP::WebSocketHandler" }
+      Log.info { "WebSocket #{@id}: starting upgrade via HTTP::WebSocketHandler" }
 
       # Perform WebSocket upgrade - HTTP::WebSocketHandler handles the handshake
       # Note: We ignore response_headers from the backend since the handshake is
       # between the browser and this server, not the backend
       handler = HTTP::WebSocketHandler.new do |socket, ctx|
-        Log.debug { "WebSocket #{@id}: handler callback invoked, socket=#{socket.class}" }
+        Log.info { "WebSocket #{@id}: handler callback invoked" }
         @socket = socket
         @upgrade_succeeded = true
         setup_handlers(socket)
-        Log.debug { "WebSocket #{@id}: handlers set up, socket.run will be called by handler" }
+        Log.info { "WebSocket #{@id}: handlers set up" }
         # socket.run is called by the handler
       end
 
       # Call handler directly - it spawns its own fiber internally
-      Log.debug { "WebSocket #{@id}: calling handler" }
+      Log.info { "WebSocket #{@id}: calling handler" }
       handler.call(@context)
-      Log.debug { "WebSocket #{@id}: handler.call returned" }
+      Log.info { "WebSocket #{@id}: handler.call returned, sending signal" }
 
       # Signal success AFTER handler.call completes the handshake
       @upgrade_complete.send(true)
-      Log.debug { "WebSocket #{@id}: upgrade complete signal sent" }
     end
 
     # Fail the WebSocket upgrade
