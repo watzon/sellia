@@ -1,4 +1,5 @@
 require "http/server"
+require "http/web_socket"
 require "base64"
 require "./tunnel_registry"
 require "./connection_manager"
@@ -131,6 +132,7 @@ module Sellia::Server
       # Check for required WebSocket headers
       ws_key = context.request.headers["Sec-WebSocket-Key"]?
       ws_version = context.request.headers["Sec-WebSocket-Version"]?
+      ws_protocol_header = context.request.headers["Sec-WebSocket-Protocol"]?
 
       unless ws_key && ws_version == "13"
         @pending_websockets.remove(request_id)
@@ -153,8 +155,17 @@ module Sellia::Server
         return
       end
 
-      # Use response.upgrade to properly handle the WebSocket handshake
-      # This keeps the handler alive and gives us access to the underlying IO
+      # Write the WebSocket handshake response headers before upgrade.
+      # response.upgrade only writes headers as-is; it doesn't set them.
+      context.response.status = :switching_protocols
+      context.response.headers["Upgrade"] = "websocket"
+      context.response.headers["Connection"] = "Upgrade"
+      context.response.headers["Sec-WebSocket-Accept"] = HTTP::WebSocket::Protocol.key_challenge(ws_key)
+      if selected_protocol = select_websocket_protocol(ws_protocol_header)
+        context.response.headers["Sec-WebSocket-Protocol"] = selected_protocol
+      end
+
+      # Use response.upgrade to keep the handler alive and access the underlying IO
       context.response.upgrade do |io|
         Log.info { "WebSocket #{request_id}: upgrade handler executing, waiting for CLI confirmation" }
 
@@ -199,6 +210,11 @@ module Sellia::Server
 
       Log.debug { "WebSocket #{request_id} connection closed, removing from store" }
       @pending_websockets.remove(request_id)
+    end
+
+    private def select_websocket_protocol(header : String?) : String?
+      return nil unless header
+      header.split(',').map(&.strip).reject(&.empty?).first?
     end
 
     # Run the WebSocket frame reading loop
