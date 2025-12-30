@@ -6,7 +6,7 @@ module Sellia::Protocol::Messages
     property type : String = "tcp_open"
     property connection_id : String
     property tunnel_id : String
-    property remote_addr : String  # Client IP:Port
+    property remote_addr : String # Client IP:Port
 
     def initialize(@connection_id : String, @tunnel_id : String, @remote_addr : String)
     end

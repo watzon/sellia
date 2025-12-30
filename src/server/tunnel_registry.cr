@@ -17,7 +17,7 @@ module Sellia::Server
       property client_id : String
       property created_at : Time
       property auth : String?
-      property tunnel_type : String  # "http" or "tcp"
+      property tunnel_type : String # "http" or "tcp"
 
       def initialize(@id : String, @subdomain : String, @client_id : String, @auth : String? = nil, @tunnel_type : String = "http")
         @created_at = Time.utc
