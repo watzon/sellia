@@ -8,8 +8,8 @@ require "../../src/cli/tunnel_client"
 
 describe "WebSocket tunnel integration" do
   it "echoes the requested subprotocol during the handshake" do
-    local_port = 19984
-    server_port = 19983
+    local_port = 19977
+    server_port = 19976
     tunnel_connected = Channel(String).new
 
     ws_handler = HTTP::WebSocketHandler.new do |socket, _ctx|
@@ -73,6 +73,76 @@ describe "WebSocket tunnel integration" do
     headers["sec-websocket-protocol"]?.should eq("vite-hmr")
 
     socket.close
+    client.stop
+    local_server.close
+  end
+
+  it "forwards WebSocket frames through the tunnel" do
+    local_port = 19975
+    server_port = 19974
+    tunnel_connected = Channel(String).new
+
+    ws_handler = HTTP::WebSocketHandler.new do |socket, _ctx|
+      socket.on_message { |msg| socket.send("echo:#{msg}") }
+    end
+    local_server = HTTP::Server.new([ws_handler])
+    local_server.bind_tcp("127.0.0.1", local_port)
+    spawn { local_server.listen }
+    sleep 0.1.seconds
+
+    tunnel_server = Sellia::Server::Server.new(
+      host: "127.0.0.1",
+      port: server_port,
+      domain: "127.0.0.1:#{server_port}",
+      require_auth: false
+    )
+    spawn { tunnel_server.start }
+    sleep 0.2.seconds
+
+    client = Sellia::CLI::TunnelClient.new(
+      server_url: "http://127.0.0.1:#{server_port}",
+      local_port: local_port,
+      subdomain: "wsframe"
+    )
+    client.auto_reconnect = false
+    client.on_connect { |url| tunnel_connected.send(url) }
+    spawn { client.start }
+
+    select
+    when tunnel_connected.receive
+      # Connected
+    when timeout(5.seconds)
+      fail "Tunnel did not connect within timeout"
+    end
+
+    socket = TCPSocket.new("127.0.0.1", server_port)
+    ws_key = Base64.strict_encode(Random::Secure.random_bytes(16))
+    request = String.build do |io|
+      io << "GET /hmr HTTP/1.1\r\n"
+      io << "Host: wsframe.127.0.0.1:#{server_port}\r\n"
+      io << "Upgrade: websocket\r\n"
+      io << "Connection: Upgrade\r\n"
+      io << "Sec-WebSocket-Key: #{ws_key}\r\n"
+      io << "Sec-WebSocket-Version: 13\r\n"
+      io << "Sec-WebSocket-Protocol: vite-hmr\r\n"
+      io << "\r\n"
+    end
+    socket << request
+    socket.flush
+
+    response = read_http_response(socket)
+    status_line, _headers = parse_http_headers(response)
+    status_line.should contain("101")
+
+    protocol = HTTP::WebSocket::Protocol.new(socket, masked: true, sync_close: false)
+    protocol.send("ping")
+
+    buffer = Bytes.new(1024)
+    info = protocol.receive(buffer)
+    info.opcode.should eq(HTTP::WebSocket::Protocol::Opcode::TEXT)
+    String.new(buffer[0, info.size]).should eq("echo:ping")
+
+    protocol.close
     client.stop
     local_server.close
   end
