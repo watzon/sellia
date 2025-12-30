@@ -2,6 +2,7 @@
 /bin/
 /.shards/
 *.dwarf
+/site/
 
 # Web build artifacts
 /web/node_modules/
