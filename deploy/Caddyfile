@@ -36,8 +36,14 @@
 # Wildcard for all tunnel subdomains
 *.{$SELLIA_DOMAIN} {
 	reverse_proxy sellia-server:3000 {
+		# Force HTTP/1.1 for backend connection (required for WebSocket)
+		transport http {
+			versions h1c1
+		}
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 		flush_interval -1
 	}
 
@@ -52,8 +58,14 @@
 # Base domain for WebSocket connections and health checks
 {$SELLIA_DOMAIN} {
 	reverse_proxy sellia-server:3000 {
+		# Force HTTP/1.1 for backend connection (required for WebSocket)
+		transport http {
+			versions h1c1
+		}
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
 		flush_interval -1
 	}
 

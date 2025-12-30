@@ -516,6 +516,7 @@ module Sellia::CLI
         Log.debug { "WebSocket routed #{message.path} to #{target_host}:#{target_port} via #{match.pattern}" }
       else
         # No route matched
+        Log.warn { "WebSocket no route matched for #{message.path}" }
         send_message(Protocol::Messages::WebSocketUpgradeError.new(
           request_id: message.request_id,
           status_code: 502,
@@ -545,7 +546,11 @@ module Sellia::CLI
       end
 
       # Attempt connection to local service
-      if response_headers = ws_proxy.connect(message.path, message.headers)
+      Log.debug { "WebSocket attempting connection to local service: #{target_host}:#{target_port}#{message.path}" }
+      response_headers = ws_proxy.connect(message.path, message.headers)
+
+      if response_headers
+        Log.debug { "WebSocket connected successfully, sending UpgradeOk for #{message.request_id}" }
         @active_websockets[message.request_id] = ws_proxy
         send_message(Protocol::Messages::WebSocketUpgradeOk.new(
           request_id: message.request_id,
@@ -554,12 +559,21 @@ module Sellia::CLI
         # Notify callback for logging
         @on_websocket.try(&.call(message.path, message.request_id))
       else
+        Log.warn { "WebSocket connection failed for #{message.request_id}" }
         send_message(Protocol::Messages::WebSocketUpgradeError.new(
           request_id: message.request_id,
           status_code: 502,
           message: "Failed to connect to local WebSocket service"
         ))
       end
+    rescue ex
+      Log.error { "WebSocket upgrade error for #{message.request_id}: #{ex.class}: #{ex.message}" }
+      Log.error { ex.backtrace.join("\n") }
+      send_message(Protocol::Messages::WebSocketUpgradeError.new(
+        request_id: message.request_id,
+        status_code: 500,
+        message: "Internal error: #{ex.message}"
+      ))
     end
 
     private def handle_websocket_frame(message : Protocol::Messages::WebSocketFrame)
