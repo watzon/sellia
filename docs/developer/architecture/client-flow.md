@@ -14,7 +14,7 @@ The Sellia client (`TunnelClient`) runs on the user's machine, establishes a Web
 client = TunnelClient.new(
   server_url: "wss://sellia.dev",
   local_port: 3000,
-  api_key: "sk_live_...",
+  api_key: "key_...",
   subdomain: "myapp",      # optional
   auth: "user:pass"        # optional basic auth
 )

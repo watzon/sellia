@@ -198,7 +198,7 @@ Regularly rotate API keys:
 ```bash
 # Step 1: Create new key
 sellia admin api-keys create --name "New Key"
-# Save the key: sk_live_newkey...
+# Save the key: key_newkey...
 
 # Step 2: Update clients
 sellia auth login

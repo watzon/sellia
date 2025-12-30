@@ -79,7 +79,7 @@ Overrides the API key from config or environment. Required if the server require
 
 **Example:**
 ```bash
-sellia http 3000 --api-key sk_live_abc123
+sellia http 3000 --api-key key_abc123
 ```
 
 ### `-i, --inspector-port PORT`

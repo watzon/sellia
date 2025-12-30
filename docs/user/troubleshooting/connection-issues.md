@@ -104,14 +104,14 @@ sellia server --no-auth
 
 2. **Provide correct API key**:
 ```bash
-sellia http --api-key sk_live_abc123...
+sellia http --api-key key_abc123...
 ```
 
 3. **Create new API key**:
 ```bash
 sellia admin api-keys create --name "My Key"
 
-# Output: Created API key: sk_live_abc123...
+# Output: Created API key: key_abc123...
 ```
 
 4. **Set master key** (simple deployment):

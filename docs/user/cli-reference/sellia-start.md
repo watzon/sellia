@@ -155,7 +155,7 @@ API key for authentication.
 **Type:** `String`
 
 ```yaml
-api_key: sk_live_abc123
+api_key: key_abc123
 ```
 
 ## Configuration Loading Order
@@ -318,7 +318,7 @@ server: ${TUNNEL_SERVER:-https://sellia.me}
 Then run:
 
 ```bash
-export SELLIA_API_KEY=sk_live_abc123
+export SELLIA_API_KEY=key_abc123
 sellia start
 ```
 

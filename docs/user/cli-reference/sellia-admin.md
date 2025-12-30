@@ -236,13 +236,13 @@ sellia admin api-keys list
 ```
 API Keys: (3)
 
-  sk_live_abc  Production Admin      (master)
+  key_abc  Production Admin      (master)
     Created: 2025-01-15 10:30
 
-  sk_live_def  Development Team
+  key_def  Development Team
     Created: 2025-01-20 14:22
 
-  sk_live_ghi  Test Key              (revoked)
+  key_ghi  Test Key              (revoked)
     Created: 2025-01-10 09:15
 ```
 
@@ -289,8 +289,8 @@ sellia admin api-keys create --master --name "Admin Key"
 ```
 ✓ API key created
 
-  Key: sk_live_xyz123abcdef456789...
-  Prefix: sk_live_xyz
+  Key: key_xyz123abcdef456789...
+  Prefix: key_xyz
   Name: Development Team
 
 Save this key now - it won't be shown again!
@@ -301,8 +301,8 @@ For master keys, the output includes:
 ```
 ✓ API key created
 
-  Key: sk_live_xyz123abcdef456789...
-  Prefix: sk_live_xyz
+  Key: key_xyz123abcdef456789...
+  Prefix: key_xyz
   Name: Admin Key
   Type: Master (admin access)
 
@@ -338,7 +338,7 @@ sellia admin api-keys revoke <key-prefix> [--server URL]
 
 #### Arguments
 
-- `<key-prefix>` - Key prefix to revoke (e.g., `sk_live_abc`)
+- `<key-prefix>` - Key prefix to revoke (e.g., `key_abc`)
 
 #### Options
 
@@ -347,19 +347,19 @@ sellia admin api-keys revoke <key-prefix> [--server URL]
 #### Usage
 
 ```bash
-sellia admin api-keys revoke sk_live_abc
+sellia admin api-keys revoke key_abc
 ```
 
 #### Output
 
 ```
-✓ API key 'sk_live_abc' revoked
+✓ API key 'key_abc' revoked
 ```
 
 #### Errors
 
 ```
-Error: API key 'sk_live_abc' not found
+Error: API key 'key_abc' not found
 ```
 
 ```
@@ -404,16 +404,16 @@ sellia admin api-keys create --master --name "Production Admin"
 $ sellia admin api-keys list
 API Keys: (5)
 
-  sk_live_abc  Production Admin      (master)
+  key_abc  Production Admin      (master)
     Created: 2025-01-15 10:30
 
-  sk_live_def  Development Team
+  key_def  Development Team
     Created: 2025-01-20 14:22
 
-  sk_live_ghi  Staging Environment
+  key_ghi  Staging Environment
     Created: 2025-01-22 09:45
 
-  sk_live_jkl  Old Key               (revoked)
+  key_jkl  Old Key               (revoked)
     Created: 2025-01-10 09:15
 ```
 
@@ -424,7 +424,7 @@ API Keys: (5)
 sellia admin api-keys list
 
 # Revoke compromised or expired keys
-sellia admin api-keys revoke sk_live_old
+sellia admin api-keys revoke key_old
 ```
 
 ## Managing Multiple Servers

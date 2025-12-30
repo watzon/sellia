@@ -56,7 +56,7 @@ Enter your API key and press Enter. The key is saved to `~/.config/sellia/sellia
 After login, your config file contains:
 
 ```yaml
-api_key: sk_live_abc123def456...
+api_key: key_abc123def456...
 server: https://sellia.me
 ```
 
@@ -155,7 +155,7 @@ This file is also used for other configuration settings.
 
 ```bash
 $ sellia auth login
-API Key: sk_live_abc123def456...
+API Key: key_abc123def456...
 ✓ API key saved to /home/user/.config/sellia/sellia.yml
 ```
 
@@ -195,13 +195,13 @@ You don't have to use `sellia auth login`. You can also:
 ### 1. Use `--api-key` flag
 
 ```bash
-sellia http 3000 --api-key sk_live_abc123
+sellia http 3000 --api-key key_abc123
 ```
 
 ### 2. Use environment variable
 
 ```bash
-export SELLIA_API_KEY=sk_live_abc123
+export SELLIA_API_KEY=key_abc123
 sellia http 3000
 ```
 
@@ -210,7 +210,7 @@ sellia http 3000
 Edit `~/.config/sellia/sellia.yml`:
 
 ```yaml
-api_key: sk_live_abc123
+api_key: key_abc123
 ```
 
 ## Admin API Keys

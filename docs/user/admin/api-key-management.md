@@ -181,7 +181,7 @@ sellia admin api-keys revoke a1b2c3d4
 ```bash
 # Step 1: Create new key
 sellia admin api-keys create --name "New Key"
-# Save: sk_live_new_key_here
+# Save: key_new_key_here
 
 # Step 2: Update all clients
 # Users run: sellia auth login
@@ -199,7 +199,7 @@ sellia admin api-keys revoke old_prefix
 ### Environment Variable
 
 ```bash
-export SELLIA_ADMIN_API_KEY="sk_live_master_key"
+export SELLIA_ADMIN_API_KEY="key_master_key"
 sellia admin api-keys list
 ```
 
@@ -207,7 +207,7 @@ sellia admin api-keys list
 
 ```yaml
 # ~/.config/sellia/sellia.yml
-api_key: sk_live_master_key
+api_key: key_master_key
 server: https://sellia.me
 ```
 
@@ -282,7 +282,7 @@ sellia admin api-keys list
 sellia admin api-keys create --name "Alice's Key"
 
 # 2. Send key securely (e.g., via password manager)
-# Key: sk_live_generated_key_here
+# Key: key_generated_key_here
 
 # 3. User authenticates
 # User runs: sellia auth login

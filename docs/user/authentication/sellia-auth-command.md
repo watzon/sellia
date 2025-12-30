@@ -126,19 +126,19 @@ The auth command is just one way to provide your API key. Sellia checks multiple
 
 1. **Environment variable** (highest priority)
    ```bash
-   export SELLIA_API_KEY="sk_live_..."
+   export SELLIA_API_KEY="key_..."
    sellia http 3000
    ```
 
 2. **Command-line flag**
    ```bash
-   sellia http 3000 --api-key sk_live_...
+   sellia http 3000 --api-key key_...
    ```
 
 3. **Config file** (set by `auth login`)
    ```yaml
    # ~/.config/sellia/sellia.yml
-   api_key: sk_live_...
+   api_key: key_...
    ```
 
 The first value found is used. Environment variables override config files.
@@ -159,7 +159,7 @@ sellia http 3000
 
 **One-off tunnels:** Use command-line flag
 ```bash
-sellia http 3000 --api-key sk_live_...
+sellia http 3000 --api-key key_...
 ```
 
 ## Config File Locations
@@ -180,14 +180,14 @@ Later configs override earlier ones. This allows for per-project overrides.
 **Global config:**
 ```yaml
 # ~/.config/sellia/sellia.yml
-api_key: sk_live_global_key
+api_key: key_global_key
 server: https://sellia.me
 ```
 
 **Project override:**
 ```yaml
 # ./sellia.yml
-api_key: sk_live_project_key
+api_key: key_project_key
 tunnels:
   app:
     port: 3000

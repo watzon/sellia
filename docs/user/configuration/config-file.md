@@ -434,7 +434,7 @@ Use environment variables for sensitive data:
 
 ```yaml
 # DON'T do this
-api_key: sk_live_abc123...
+api_key: key_abc123...
 
 # DO this instead
 api_key: ${SELLIA_API_KEY}
@@ -444,7 +444,7 @@ Create `.env` file (in `.gitignore`):
 
 ```bash
 # .env
-SELLIA_API_KEY=sk_live_abc123...
+SELLIA_API_KEY=key_abc123...
 ```
 
 ### 3. Document Configuration

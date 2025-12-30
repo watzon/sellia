@@ -61,7 +61,7 @@ end
 client = TunnelClient.new(
   server_url: "wss://sellia.dev",
   local_port: 3000,
-  api_key: "sk_live_...",
+  api_key: "key_...",
   subdomain: "myapp"
 )
 
@@ -589,7 +589,7 @@ client.start
 client = TunnelClient.new(
   server_url: "wss://sellia.dev",
   local_port: 3000,
-  api_key: "sk_live_..."
+  api_key: "key_..."
 )
 
 client.start

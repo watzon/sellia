@@ -66,7 +66,7 @@ server: http://localhost:8080  # Custom server
 API authentication key for protected tunnels. Can also be set via `SELLIA_API_KEY` environment variable.
 
 ```yaml
-api_key: sk_live_abc123...
+api_key: key_abc123...
 ```
 
 ---
@@ -279,7 +279,7 @@ tunnels:
 ```yaml
 # sellia.yml
 server: https://sellia.me
-api_key: sk_live_abc123
+api_key: key_abc123
 
 tunnels:
   web:
@@ -290,7 +290,7 @@ tunnels:
 
 ```yaml
 server: https://sellia.me
-api_key: sk_live_abc123
+api_key: key_abc123
 
 inspector:
   port: 4040

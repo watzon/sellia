@@ -388,7 +388,7 @@ pipeline {
 **WRONG**:
 ```yaml
 # sellia.yml (committed)
-api_key: sk_live_abc123...
+api_key: key_abc123...
 ```
 
 **CORRECT**:
@@ -399,7 +399,7 @@ api_key: ${SELLIA_API_KEY}
 
 ```bash
 # .env (NOT committed)
-SELLIA_API_KEY=sk_live_abc123...
+SELLIA_API_KEY=key_abc123...
 ```
 
 ### 2. Use Different Keys per Environment

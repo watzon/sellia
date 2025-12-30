@@ -219,28 +219,28 @@ sellia admin <subcommand> [options]
 
 ```bash
 # List reserved subdomains
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin reserved list
+SELLIA_ADMIN_API_KEY=key_admin sellia admin reserved list
 
 # Reserve a subdomain
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin reserved add myapp
+SELLIA_ADMIN_API_KEY=key_admin sellia admin reserved add myapp
 
 # Reserve with reason
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin reserved add myapp --reason "Production app"
+SELLIA_ADMIN_API_KEY=key_admin sellia admin reserved add myapp --reason "Production app"
 
 # Release a subdomain
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin reserved remove myapp
+SELLIA_ADMIN_API_KEY=key_admin sellia admin reserved remove myapp
 
 # List API keys
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin api-keys list
+SELLIA_ADMIN_API_KEY=key_admin sellia admin api-keys list
 
 # Create new API key
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin api-keys create --name "Dev key"
+SELLIA_ADMIN_API_KEY=key_admin sellia admin api-keys create --name "Dev key"
 
 # Create master key
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin api-keys create --master --name "Admin key"
+SELLIA_ADMIN_API_KEY=key_admin sellia admin api-keys create --master --name "Admin key"
 
 # Revoke API key
-SELLIA_ADMIN_API_KEY=sk_live_admin sellia admin api-keys revoke sk_live_
+SELLIA_ADMIN_API_KEY=key_admin sellia admin api-keys revoke key_
 ```
 
 ---

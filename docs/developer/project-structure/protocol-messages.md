@@ -719,7 +719,7 @@ end
 ### To MessagePack
 
 ```crystal
-message = Protocol::Messages::Auth.new("sk_live_...")
+message = Protocol::Messages::Auth.new("key_...")
 bytes = message.to_msgpack
 # => Bytes containing MessagePack binary data
 ```
