@@ -52,8 +52,10 @@ module Sellia::Server
         @socket = socket
         @upgrade_succeeded = true
         setup_handlers(socket)
-        Log.info { "WebSocket #{@id}: handlers set up" }
-        # socket.run is called by the handler
+        Log.info { "WebSocket #{@id}: handlers set up, starting socket.run" }
+        # Start reading frames - this blocks until connection closes
+        socket.run
+        Log.info { "WebSocket #{@id}: socket.run returned (connection closed)" }
       end
 
       # Call handler directly - it spawns its own fiber internally
