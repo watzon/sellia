@@ -54,7 +54,7 @@ module Sellia::CLI
     # Callbacks
     @on_connect : (String ->)?
     @on_request : (Protocol::Messages::RequestStart ->)?
-    @on_websocket : (String, String ->)?  # (path, request_id)
+    @on_websocket : (String, String ->)? # (path, request_id)
     @on_disconnect : (->)?
     @on_error : (String ->)?
 

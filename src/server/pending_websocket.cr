@@ -1,9 +1,15 @@
 require "http/server"
 require "http/web_socket"
+require "openssl"
+require "base64"
 require "log"
 
 module Sellia::Server
   # Tracks a pending WebSocket upgrade request
+  #
+  # The actual WebSocket handshake and frame reading is handled by
+  # HTTPIngress using response.upgrade. This class just tracks state
+  # and provides signaling between the HTTP handler and WSGateway.
   class PendingWebSocket
     Log = ::Log.for(self)
 
@@ -11,77 +17,60 @@ module Sellia::Server
     property context : HTTP::Server::Context
     property tunnel_id : String
     property created_at : Time
+    property ws_protocol : HTTP::WebSocket::Protocol? # Set after upgrade is complete
 
-    @socket : HTTP::WebSocket?
     @closed : Bool = false
-    @upgrade_started : Bool = false
     @upgrade_succeeded : Bool = false
     @upgrade_complete : Channel(Bool)
     @connection_closed : Channel(Nil)
-    @on_frame : Proc(UInt8, Bytes, Nil)?
-    @on_close : Proc(UInt16?, Nil)?
+    @frame_callback : Proc(UInt8, Bytes, Nil)?
+    @close_callback : Proc(UInt16?, Nil)?
+    @ws_key : String? # Store the WebSocket key from original request
+
+    WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
     def initialize(@id : String, @context : HTTP::Server::Context, @tunnel_id : String)
       @created_at = Time.utc
       @upgrade_complete = Channel(Bool).new(1)
       @connection_closed = Channel(Nil).new(1)
+
+      # Extract and store the WebSocket key from the original request
+      @ws_key = @context.request.headers["Sec-WebSocket-Key"]?
     end
 
     # Set callback for receiving frames from external client
     def on_frame(&block : UInt8, Bytes ->)
-      @on_frame = block
+      @frame_callback = block
     end
 
     # Set callback for connection close
     def on_close(&block : UInt16? ->)
-      @on_close = block
+      @close_callback = block
     end
 
-    # Complete the WebSocket upgrade after client confirms local connection
-    def complete_upgrade(response_headers : Hash(String, Array(String)))
-      return if @closed
-      return if @upgrade_started # Prevent double upgrade
+    # Invoke the frame callback (called by frame loop)
+    def handle_frame(opcode : UInt8, payload : Bytes)
+      @frame_callback.try(&.call(opcode, payload))
+    end
 
-      @upgrade_started = true
+    # Invoke the close callback (called by frame loop)
+    def handle_close(code : UInt16?)
+      @close_callback.try(&.call(code))
+    end
 
-      Log.info { "WebSocket #{@id}: starting upgrade via HTTP::WebSocketHandler" }
-
-      # Perform WebSocket upgrade - HTTP::WebSocketHandler handles the handshake
-      # Note: We ignore response_headers from the backend since the handshake is
-      # between the browser and this server, not the backend
-      handler = HTTP::WebSocketHandler.new do |socket, ctx|
-        Log.info { "WebSocket #{@id}: handler callback invoked" }
-        @socket = socket
-        @upgrade_succeeded = true
-        setup_handlers(socket)
-        Log.info { "WebSocket #{@id}: handlers set up, starting socket.run" }
-        # Start reading frames - this blocks until connection closes
-        begin
-          socket.run
-          Log.info { "WebSocket #{@id}: socket.run returned (connection closed normally)" }
-        rescue ex : Exception
-          Log.error { "WebSocket #{@id}: socket.run raised exception: #{ex.class}: #{ex.message}" }
-          Log.error { ex.backtrace.join("\n") }
-        ensure
-          # Signal that the connection is closed so proxy_websocket can return
-          @connection_closed.send(nil) unless @closed
-          @closed = true
-        end
-      end
-
-      # Call handler directly - it spawns its own fiber internally
-      Log.info { "WebSocket #{@id}: calling handler" }
-      handler.call(@context)
-      Log.info { "WebSocket #{@id}: handler.call returned, sending signal" }
-
-      # Signal success AFTER handler.call completes the handshake
+    # Signal that the CLI has confirmed the local WebSocket connection
+    # This is called by WSGateway when it receives WebSocketUpgradeOk
+    def signal_upgrade_confirmed
+      return if @upgrade_succeeded
+      Log.info { "WebSocket #{@id}: CLI confirmed local connection" }
+      @upgrade_succeeded = true
       @upgrade_complete.send(true)
     end
 
     # Fail the WebSocket upgrade
     def fail_upgrade(status : Int32, message : String)
       return if @closed
-      return if @upgrade_started # Don't try to fail if upgrade already started/succeeded
+      return if @upgrade_succeeded # Don't fail if upgrade already succeeded
 
       @closed = true
 
@@ -110,98 +99,71 @@ module Sellia::Server
       when result = @upgrade_complete.receive
         result
       when timeout(timeout)
-        # Check if upgrade already succeeded (race condition with spawned fiber)
+        # Check if upgrade already succeeded (race condition)
         if @upgrade_succeeded
           Log.debug { "WebSocket upgrade #{@id} succeeded (timeout fired late)" }
           return true
         end
 
-        # Only log warning and fail if upgrade hasn't started
-        unless @upgrade_started
-          Log.warn { "WebSocket upgrade timeout for #{@id}" }
-          fail_upgrade(504, "WebSocket upgrade timeout")
-        else
-          Log.debug { "WebSocket upgrade #{@id} in progress when timeout fired" }
-        end
+        # If upgrade hasn't succeeded, signal failure
+        Log.warn { "WebSocket upgrade timeout for #{@id}" }
+        @upgrade_complete.send(false)
         false
       end
     end
 
+    # Signal that the connection has closed
+    # Called by the frame loop when the WebSocket connection ends
+    def signal_closed
+      @closed = true
+      @connection_closed.send(nil)
+    end
+
     # Wait for the WebSocket connection to close
     # This keeps the HTTP handler alive while the WebSocket is active
+    # NOTE: This is no longer used since response.upgrade keeps the handler alive
     def wait_for_close
       @connection_closed.receive
     end
 
-    # Get the WebSocket once upgrade is complete
-    def socket : HTTP::WebSocket?
-      @socket
-    end
-
-    # Send a frame to the external client
+    # Send a frame to the external client (from CLI)
     def send_frame(opcode : UInt8, payload : Bytes)
-      socket = @socket
-      return unless socket
+      protocol = @ws_protocol
+      return unless protocol
       return if @closed
 
       Log.debug { "WebSocket #{@id}: sending frame opcode=#{opcode}, size=#{payload.size}" }
 
-      case opcode
-      when 0x01_u8 # Text
-        socket.send(String.new(payload))
-      when 0x02_u8 # Binary
-        socket.send(payload)
-      when 0x09_u8 # Ping
-        socket.ping(String.new(payload))
-      when 0x0A_u8 # Pong
-        socket.pong(String.new(payload))
+      begin
+        case opcode
+        when 0x01_u8 # Text
+          protocol.send(String.new(payload))
+        when 0x02_u8 # Binary
+          protocol.send(payload)
+        when 0x08_u8 # Close
+          protocol.close
+        when 0x09_u8 # Ping
+          protocol.ping(payload.empty? ? nil : String.new(payload))
+        when 0x0A_u8 # Pong
+          protocol.pong(payload.empty? ? nil : String.new(payload))
+        else
+          Log.warn { "WebSocket #{@id}: unknown opcode #{opcode}" }
+        end
+      rescue ex
+        Log.warn { "WebSocket #{@id} send failed: #{ex.message}" }
       end
-    rescue ex
-      Log.warn { "WebSocket #{@id} send failed: #{ex.message}" }
     end
 
     # Close the WebSocket connection
     def close
       return if @closed
       @closed = true
-      @socket.try(&.close)
+      @ws_protocol.try(&.close)
+      @connection_closed.send(nil)
     end
 
     def closed? : Bool
       @closed
-    end
-
-    private def setup_handlers(socket : HTTP::WebSocket)
-      socket.on_binary do |bytes|
-        Log.debug { "WebSocket #{@id}: received binary frame, #{bytes.size} bytes" }
-        @on_frame.try(&.call(0x02_u8, bytes))
-      end
-
-      socket.on_message do |text|
-        Log.debug { "WebSocket #{@id}: received text frame: #{text.inspect}" }
-        @on_frame.try(&.call(0x01_u8, text.to_slice))
-      end
-
-      socket.on_ping do |message|
-        Log.debug { "WebSocket #{@id}: received ping, sending pong" }
-        socket.pong(message)
-      end
-
-      socket.on_close do |code|
-        Log.info { "WebSocket #{@id}: on_close callback, code=#{code.inspect}" }
-        @closed = true
-        @on_close.try(&.call(code.try(&.to_u16)))
-      end
-    end
-
-    private def hop_by_hop_header?(key : String) : Bool
-      key.downcase.in?(
-        "connection",
-        "upgrade",
-        "sec-websocket-accept",
-        "sec-websocket-extensions",
-        "transfer-encoding"
-      )
     end
   end
 
@@ -248,7 +210,7 @@ module Sellia::Server
       @mutex.synchronize do
         now = Time.utc
         @connections.reject! do |_, ws|
-          if (now - ws.created_at) > max_age && !ws.socket
+          if (now - ws.created_at) > max_age && !ws.closed?
             spawn { ws.close }
             true
           else

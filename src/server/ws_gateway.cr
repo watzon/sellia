@@ -221,26 +221,9 @@ module Sellia::Server
       if pending_ws = @pending_websockets.get(message.request_id)
         Log.debug { "WebSocket upgrade OK for #{message.request_id}" }
 
-        # Set up frame forwarding from external client to tunnel client
-        pending_ws.on_frame do |opcode, payload|
-          Log.debug { "Forwarding frame to CLI: request_id=#{message.request_id}, opcode=#{opcode}, size=#{payload.size}" }
-          client.send(Protocol::Messages::WebSocketFrame.new(
-            request_id: message.request_id,
-            opcode: opcode,
-            payload: payload
-          ))
-        end
-
-        pending_ws.on_close do |code|
-          client.send(Protocol::Messages::WebSocketClose.new(
-            request_id: message.request_id,
-            code: code
-          ))
-          @pending_websockets.remove(message.request_id)
-        end
-
-        # Complete the upgrade (starts WebSocket on server side)
-        pending_ws.complete_upgrade(message.headers)
+        # Signal the HTTP handler that CLI confirmed the connection
+        # The actual frame handling is set up in http_ingress.cr
+        pending_ws.signal_upgrade_confirmed
       else
         Log.debug { "WebSocket upgrade OK for unknown request #{message.request_id}" }
       end

@@ -128,6 +128,18 @@ module Sellia::Server
       pending_ws = PendingWebSocket.new(request_id, context, tunnel.id)
       @pending_websockets.add(pending_ws)
 
+      # Check for required WebSocket headers
+      ws_key = context.request.headers["Sec-WebSocket-Key"]?
+      ws_version = context.request.headers["Sec-WebSocket-Version"]?
+
+      unless ws_key && ws_version == "13"
+        @pending_websockets.remove(request_id)
+        context.response.status_code = 400
+        context.response.content_type = "text/plain"
+        context.response.print("Invalid WebSocket handshake")
+        return
+      end
+
       # Send upgrade request to client
       unless client.send(Protocol::Messages::WebSocketUpgrade.new(
                request_id: request_id,
@@ -141,22 +153,129 @@ module Sellia::Server
         return
       end
 
-      # Wait for upgrade confirmation - the actual upgrade and frame forwarding
-      # is handled by WSGateway when it receives WebSocketUpgradeOk
-      unless pending_ws.wait_for_upgrade(@request_timeout)
-        @pending_websockets.remove(request_id)
-        # Response already sent by fail_upgrade in wait_for_upgrade
-        return
+      # Use response.upgrade to properly handle the WebSocket handshake
+      # This keeps the handler alive and gives us access to the underlying IO
+      context.response.upgrade do |io|
+        Log.info { "WebSocket #{request_id}: upgrade handler executing, waiting for CLI confirmation" }
+
+        # Wait for CLI to confirm local connection before starting frame loop
+        # This times out if the CLI doesn't respond
+        unless pending_ws.wait_for_upgrade(@request_timeout)
+          Log.warn { "WebSocket #{request_id}: upgrade timeout - CLI did not confirm" }
+          next
+        end
+
+        Log.info { "WebSocket #{request_id}: CLI confirmed, starting frame reader" }
+
+        # Create WebSocket protocol instance for reading frames from the external client
+        # Server-side means unmasked reads, masked writes
+        ws_protocol = HTTP::WebSocket::Protocol.new(io, masked: false, sync_close: false)
+
+        # Store the protocol in pending_ws so it can be used to send frames back to the client
+        pending_ws.ws_protocol = ws_protocol
+
+        # Set up frame forwarding from external client to tunnel client
+        pending_ws.on_frame do |opcode, payload|
+          Log.debug { "WebSocket #{request_id}: forwarding frame to CLI: opcode=#{opcode}, size=#{payload.size}" }
+          client.send(Protocol::Messages::WebSocketFrame.new(
+            request_id: request_id,
+            opcode: opcode,
+            payload: payload
+          ))
+        end
+
+        pending_ws.on_close do |code|
+          Log.info { "WebSocket #{request_id}: external client closed, code=#{code.inspect}" }
+          client.send(Protocol::Messages::WebSocketClose.new(
+            request_id: request_id,
+            code: code
+          ))
+          @pending_websockets.remove(request_id)
+        end
+
+        # Run the frame reading loop
+        run_websocket_frame_loop(request_id, ws_protocol, pending_ws, io)
       end
-
-      Log.debug { "WebSocket upgrade #{request_id} completed, waiting for connection close" }
-
-      # Keep this handler alive while the WebSocket is active
-      # This prevents the HTTP server from closing the connection
-      pending_ws.wait_for_close
 
       Log.debug { "WebSocket #{request_id} connection closed, removing from store" }
       @pending_websockets.remove(request_id)
+    end
+
+    # Run the WebSocket frame reading loop
+    private def run_websocket_frame_loop(request_id : String, ws_protocol : HTTP::WebSocket::Protocol, pending_ws : PendingWebSocket, io : IO)
+      buffer = Bytes.new(8192)
+
+      Log.info { "WebSocket #{request_id}: starting frame loop" }
+
+      # Main frame reading loop
+      loop do
+        break if pending_ws.closed?
+
+        begin
+          # Read a frame
+          info = ws_protocol.receive(buffer)
+
+          Log.debug { "WebSocket #{request_id}: received frame opcode=#{info.opcode}, size=#{info.size}, final=#{info.final}" }
+
+          case info.opcode
+          when HTTP::WebSocket::Protocol::Opcode::PING
+            # Respond to ping with pong automatically
+            payload = buffer[0, info.size]
+            Log.debug { "WebSocket #{request_id}: received ping, sending pong" }
+            ws_protocol.pong(payload.empty? ? nil : String.new(payload))
+          when HTTP::WebSocket::Protocol::Opcode::PONG
+            # Pong received, ignore (unsolicited pong)
+            Log.debug { "WebSocket #{request_id}: received pong" }
+          when HTTP::WebSocket::Protocol::Opcode::CLOSE
+            # Close frame - notify and close
+            Log.info { "WebSocket #{request_id}: received close frame" }
+            pending_ws.handle_close(nil)
+            # Send close response
+            ws_protocol.close
+            break
+          when HTTP::WebSocket::Protocol::Opcode::TEXT
+            # Text frame - forward to CLI
+            payload = Bytes.new(info.size)
+            payload.copy_from(buffer.to_unsafe, info.size)
+
+            if info.final
+              Log.debug { "WebSocket #{request_id}: received text frame: #{String.new(payload)}" }
+              pending_ws.handle_frame(0x01_u8, payload)
+            end
+          when HTTP::WebSocket::Protocol::Opcode::BINARY
+            # Binary frame - forward to CLI
+            payload = Bytes.new(info.size)
+            payload.copy_from(buffer.to_unsafe, info.size)
+
+            if info.final
+              Log.debug { "WebSocket #{request_id}: received binary frame, #{info.size} bytes" }
+              pending_ws.handle_frame(0x02_u8, payload)
+            end
+          when HTTP::WebSocket::Protocol::Opcode::CONTINUATION
+            # Continuation frame - accumulate and forward when final
+            payload = Bytes.new(info.size)
+            payload.copy_from(buffer.to_unsafe, info.size)
+
+            if info.final
+              Log.debug { "WebSocket #{request_id}: received continuation frame, #{info.size} bytes (final)" }
+              pending_ws.handle_frame(0x00_u8, payload)
+            end
+          else
+            Log.warn { "WebSocket #{request_id}: unknown opcode #{info.opcode}" }
+          end
+        rescue ex : IO::Error
+          Log.info { "WebSocket #{request_id}: IO error (connection closed): #{ex.message}" }
+          pending_ws.handle_close(nil)
+          break
+        rescue ex : Exception
+          Log.error { "WebSocket #{request_id}: error in frame loop: #{ex.class}: #{ex.message}" }
+          Log.error { ex.backtrace.join("\n") }
+          pending_ws.handle_close(nil)
+          break
+        end
+      end
+
+      Log.info { "WebSocket #{request_id}: frame loop ended" }
     end
 
     private def extract_subdomain(host : String) : String?
