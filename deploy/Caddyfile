@@ -21,6 +21,18 @@
 	}
 }
 
+# HTTP to HTTPS redirect
+:80 {
+	respond /health 200
+
+	# Redir all other HTTP requests to HTTPS
+	@host {
+		host {args.0}
+		not {args.0} :8080
+	}
+	redir @host https://{host}{uri}
+}
+
 # Wildcard for all tunnel subdomains
 *.{$SELLIA_DOMAIN} {
 	reverse_proxy sellia-server:3000 {
@@ -51,9 +63,4 @@
 		output file /var/log/caddy/sellia.log
 		format json
 	}
-}
-
-# Health check endpoint for load balancers
-:8080 {
-	respond /health 200
 }
