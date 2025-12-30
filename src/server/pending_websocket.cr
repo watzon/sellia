@@ -144,6 +144,8 @@ module Sellia::Server
       return unless socket
       return if @closed
 
+      Log.debug { "WebSocket #{@id}: sending frame opcode=#{opcode}, size=#{payload.size}" }
+
       case opcode
       when 0x01_u8 # Text
         socket.send(String.new(payload))
@@ -171,18 +173,22 @@ module Sellia::Server
 
     private def setup_handlers(socket : HTTP::WebSocket)
       socket.on_binary do |bytes|
+        Log.debug { "WebSocket #{@id}: received binary frame, #{bytes.size} bytes" }
         @on_frame.try(&.call(0x02_u8, bytes))
       end
 
       socket.on_message do |text|
+        Log.debug { "WebSocket #{@id}: received text frame: #{text.inspect}" }
         @on_frame.try(&.call(0x01_u8, text.to_slice))
       end
 
       socket.on_ping do |message|
+        Log.debug { "WebSocket #{@id}: received ping, sending pong" }
         socket.pong(message)
       end
 
       socket.on_close do |code|
+        Log.info { "WebSocket #{@id}: on_close callback, code=#{code.inspect}" }
         @closed = true
         @on_close.try(&.call(code.try(&.to_u16)))
       end

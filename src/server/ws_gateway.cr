@@ -223,6 +223,7 @@ module Sellia::Server
 
         # Set up frame forwarding from external client to tunnel client
         pending_ws.on_frame do |opcode, payload|
+          Log.debug { "Forwarding frame to CLI: request_id=#{message.request_id}, opcode=#{opcode}, size=#{payload.size}" }
           client.send(Protocol::Messages::WebSocketFrame.new(
             request_id: message.request_id,
             opcode: opcode,
