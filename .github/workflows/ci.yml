@@ -146,6 +146,7 @@ jobs:
               crystal shards \
               gcc musl-dev \
               openssl-dev openssl-libs-static \
+              sqlite-dev sqlite-static \
               yaml-static zlib-static \
               pcre2-dev pcre2-static \
               gc-dev gc-static \
