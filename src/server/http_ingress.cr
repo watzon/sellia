@@ -149,8 +149,14 @@ module Sellia::Server
         return
       end
 
-      Log.debug { "WebSocket upgrade #{request_id} completed" }
-      # Note: pending_ws stays in store for frame forwarding until connection closes
+      Log.debug { "WebSocket upgrade #{request_id} completed, waiting for connection close" }
+
+      # Keep this handler alive while the WebSocket is active
+      # This prevents the HTTP server from closing the connection
+      pending_ws.wait_for_close
+
+      Log.debug { "WebSocket #{request_id} connection closed, removing from store" }
+      @pending_websockets.remove(request_id)
     end
 
     private def extract_subdomain(host : String) : String?

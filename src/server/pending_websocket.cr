@@ -17,12 +17,14 @@ module Sellia::Server
     @upgrade_started : Bool = false
     @upgrade_succeeded : Bool = false
     @upgrade_complete : Channel(Bool)
+    @connection_closed : Channel(Nil)
     @on_frame : Proc(UInt8, Bytes, Nil)?
     @on_close : Proc(UInt16?, Nil)?
 
     def initialize(@id : String, @context : HTTP::Server::Context, @tunnel_id : String)
       @created_at = Time.utc
       @upgrade_complete = Channel(Bool).new(1)
+      @connection_closed = Channel(Nil).new(1)
     end
 
     # Set callback for receiving frames from external client
@@ -60,6 +62,10 @@ module Sellia::Server
         rescue ex : Exception
           Log.error { "WebSocket #{@id}: socket.run raised exception: #{ex.class}: #{ex.message}" }
           Log.error { ex.backtrace.join("\n") }
+        ensure
+          # Signal that the connection is closed so proxy_websocket can return
+          @connection_closed.send(nil) unless @closed
+          @closed = true
         end
       end
 
@@ -119,6 +125,12 @@ module Sellia::Server
         end
         false
       end
+    end
+
+    # Wait for the WebSocket connection to close
+    # This keeps the HTTP handler alive while the WebSocket is active
+    def wait_for_close
+      @connection_closed.receive
     end
 
     # Get the WebSocket once upgrade is complete
