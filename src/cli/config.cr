@@ -33,6 +33,30 @@ module Sellia::CLI
       end
     end
 
+    class DatabaseConfig
+      include YAML::Serializable
+
+      @[YAML::Field(key: "path")]
+      property path : String?
+
+      @[YAML::Field(key: "enabled")]
+      property enabled : Bool?
+
+      def initialize(@path : String? = nil, @enabled : Bool? = nil)
+      end
+
+      def merge(other : DatabaseConfig) : DatabaseConfig
+        DatabaseConfig.new(
+          path: other.path || @path,
+          enabled: other.enabled.nil? ? @enabled : other.enabled
+        )
+      end
+
+      def enabled?(default : Bool = true) : Bool
+        @enabled.nil? ? default : @enabled.not_nil!
+      end
+    end
+
     class RouteConfig
       include YAML::Serializable
 
@@ -90,6 +114,9 @@ module Sellia::CLI
     @[YAML::Field(key: "inspector")]
     property inspector : Inspector = Inspector.new
 
+    @[YAML::Field(key: "database")]
+    property database : DatabaseConfig = DatabaseConfig.new
+
     @[YAML::Field(key: "tunnels")]
     property tunnels : Hash(String, TunnelConfig) = {} of String => TunnelConfig
 
@@ -97,6 +124,7 @@ module Sellia::CLI
       @server : String = "https://sellia.me",
       @api_key : String? = nil,
       @inspector : Inspector = Inspector.new,
+      @database : DatabaseConfig = DatabaseConfig.new,
       @tunnels : Hash(String, TunnelConfig) = {} of String => TunnelConfig,
     )
     end
@@ -106,6 +134,7 @@ module Sellia::CLI
         server: other.server.empty? || other.server == "https://sellia.me" ? @server : other.server,
         api_key: other.api_key || @api_key,
         inspector: @inspector.merge(other.inspector),
+        database: @database.merge(other.database),
         tunnels: @tunnels.merge(other.tunnels)
       )
     end
@@ -138,6 +167,12 @@ module Sellia::CLI
       end
       if env_key = ENV["SELLIA_API_KEY"]?
         config.api_key = env_key
+      end
+      if env_db_path = ENV["SELLIA_DB_PATH"]?
+        config.database.path = env_db_path
+      end
+      if env_no_db = ENV["SELLIA_NO_DB"]?
+        config.database.enabled = env_no_db != "true" && env_no_db != "1"
       end
 
       config

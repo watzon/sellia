@@ -9,6 +9,8 @@ require "./auth_provider"
 require "./rate_limiter"
 require "./ws_gateway"
 require "./http_ingress"
+require "./admin_api"
+require "./storage/storage"
 require "../core/version"
 
 module Sellia::Server
@@ -22,6 +24,8 @@ module Sellia::Server
     property use_https : Bool
     property rate_limiting : Bool
     property landing_enabled : Bool
+    property db_path : String
+    property db_enabled : Bool
 
     @tunnel_registry : TunnelRegistry
     @connection_manager : ConnectionManager
@@ -31,6 +35,7 @@ module Sellia::Server
     @rate_limiter : CompositeRateLimiter
     @ws_gateway : WSGateway
     @http_ingress : HTTPIngress
+    @admin_api : AdminAPI
     @server : HTTP::Server?
     @running : Bool = false
 
@@ -43,13 +48,24 @@ module Sellia::Server
       @use_https : Bool = false,
       @rate_limiting : Bool = true,
       @landing_enabled : Bool = true,
+      db_path : String? = nil,
+      @db_enabled : Bool = true,
     )
-      @tunnel_registry = TunnelRegistry.new
+      # Set default db path if not provided
+      @db_path = db_path || File.join(Path.home, ".sellia", "sellia.db")
+      # Initialize database FIRST (before other components that need it)
+      initialize_database(@db_path, @db_enabled)
+
+      # Load reserved subdomains from database or use defaults
+      reserved_subdomains = load_reserved_subdomains
+
+      @tunnel_registry = TunnelRegistry.new(reserved_subdomains)
       @connection_manager = ConnectionManager.new
       @pending_requests = PendingRequestStore.new
       @pending_websockets = PendingWebSocketStore.new
-      @auth_provider = AuthProvider.new(@require_auth, @master_key)
+      @auth_provider = AuthProvider.new(@require_auth, @master_key, use_database: database_available?)
       @rate_limiter = CompositeRateLimiter.new(enabled: @rate_limiting)
+      @admin_api = AdminAPI.new(@auth_provider, @tunnel_registry)
 
       @ws_gateway = WSGateway.new(
         connection_manager: @connection_manager,
@@ -96,8 +112,60 @@ module Sellia::Server
       server.listen
     end
 
+    # Initialize database with migrations and seed data
+    private def initialize_database(path : String, enabled : Bool)
+      return unless enabled
+      return if path.empty? || path == ":none:"
+
+      begin
+        # Ensure parent directory exists
+        dir = File.dirname(path)
+        Dir.mkdir_p(dir) if !Dir.exists?(dir)
+
+        # Open database
+        Storage::Database.open(path)
+
+        # Run migrations
+        Storage::Migrations.migrate
+
+        # Seed default reserved subdomains
+        Storage::Migrations.seed_default_reserved_subdomains
+
+        Log.info { "Database initialized at #{path}" }
+      rescue ex : Exception
+        Log.error { "Failed to initialize database: #{ex.message}" }
+        # Continue without database - use in-memory defaults
+        Storage::Database.close rescue nil
+      end
+    end
+
+    # Check if database is available
+    private def database_available? : Bool
+      Storage::Database.instance? != nil
+    end
+
+    # Load reserved subdomains from database or use defaults
+    private def load_reserved_subdomains : Set(String)
+      if database_available?
+        begin
+          return Storage::Repositories::ReservedSubdomains.to_set
+        rescue ex : Exception
+          Log.warn { "Failed to load reserved subdomains from database: #{ex.message}" }
+        end
+      end
+
+      # Fallback to defaults
+      Storage::Migrations.default_reserved_subdomains
+    end
+
     private def handle_request(context : HTTP::Server::Context)
       path = context.request.path
+
+      # Admin API endpoints
+      if path.starts_with?("/api/admin/")
+        @admin_api.handle(context)
+        return
+      end
 
       # WebSocket upgrade for tunnel clients
       if path == "/ws" && context.request.headers["Upgrade"]?.try(&.downcase) == "websocket"
@@ -127,6 +195,10 @@ module Sellia::Server
 
       Log.info { "Shutting down..." }
       server.close
+
+      # Close database connection
+      Storage::Database.close
+
       exit 0
     end
   end
@@ -141,6 +213,8 @@ module Sellia::Server
     use_https = ENV["SELLIA_USE_HTTPS"]? == "true"
     rate_limiting = ENV["SELLIA_RATE_LIMITING"]? != "false"
     landing_enabled = ENV["SELLIA_DISABLE_LANDING"]? != "true"
+    db_path = ENV["SELLIA_DB_PATH"]? || File.join(Path.home, ".sellia", "sellia.db")
+    db_enabled = ENV["SELLIA_NO_DB"]? != "true" && ENV["SELLIA_NO_DB"]? != "1"
 
     # Parse command-line options (override env vars)
     OptionParser.parse do |parser|
@@ -157,6 +231,8 @@ module Sellia::Server
       parser.on("--https", "Generate HTTPS URLs for tunnels") { use_https = true }
       parser.on("--no-rate-limit", "Disable rate limiting") { rate_limiting = false }
       parser.on("--no-landing", "Disable the landing page") { landing_enabled = false }
+      parser.on("--db-path PATH", "Path to SQLite database") { |p| db_path = p }
+      parser.on("--no-db", "Disable database (use in-memory defaults)") { db_enabled = false }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -181,7 +257,9 @@ module Sellia::Server
       master_key: master_key,
       use_https: use_https,
       rate_limiting: rate_limiting,
-      landing_enabled: landing_enabled
+      landing_enabled: landing_enabled,
+      db_path: db_path,
+      db_enabled: db_enabled
     ).start
   end
 end

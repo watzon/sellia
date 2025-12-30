@@ -201,7 +201,9 @@ describe Sellia::Server::TunnelRegistry do
     end
 
     it "rejects reserved subdomains" do
-      registry = Sellia::Server::TunnelRegistry.new
+      registry = Sellia::Server::TunnelRegistry.new(
+        Sellia::Server::Storage::Migrations.default_reserved_subdomains
+      )
       %w[api www admin dashboard auth login].each do |subdomain|
         result = registry.validate_subdomain(subdomain)
         result.valid.should be_false, "Expected '#{subdomain}' to be reserved"

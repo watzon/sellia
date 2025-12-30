@@ -6,6 +6,7 @@ require "./tunnel_client"
 require "./request_store"
 require "./inspector"
 require "./updater"
+require "./admin_commands"
 require "../core/version"
 
 module Sellia::CLI
@@ -13,7 +14,7 @@ module Sellia::CLI
 
   def self.run
     # Configure logging
-    ::Log.setup_from_env(default_level: :info)
+    ::Log.setup_from_env(default_level: :warn)
 
     command = ARGV.shift?
 
@@ -24,6 +25,8 @@ module Sellia::CLI
       run_start
     when "auth"
       run_auth
+    when "admin"
+      run_admin
     when "update"
       run_update
     when "version", "-v", "--version"
@@ -448,6 +451,7 @@ module Sellia::CLI
     puts "  #{"http".colorize(:green)} <port>     Create HTTP tunnel to local port"
     puts "  #{"start".colorize(:green)}           Start tunnels from config file"
     puts "  #{"auth".colorize(:green)}            Manage authentication"
+    puts "  #{"admin".colorize(:green)}           Admin commands (requires admin API key)"
     puts "  #{"update".colorize(:green)}          Update to latest version"
     puts "  #{"version".colorize(:green)}         Show version"
     puts "  #{"help".colorize(:green)}            Show this help"
