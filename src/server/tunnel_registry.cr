@@ -2,23 +2,6 @@ require "mutex"
 
 module Sellia::Server
   class TunnelRegistry
-    # Reserved subdomains that cannot be claimed
-    @@reserved_subdomains = Set{
-      "api", "www", "admin", "app", "dashboard", "console",
-      "mail", "smtp", "imap", "pop", "ftp", "ssh", "sftp",
-      "cdn", "static", "assets", "media", "images", "files",
-      "auth", "login", "oauth", "sso", "account", "accounts",
-      "billing", "pay", "payment", "payments", "subscribe",
-      "help", "support", "docs", "documentation", "status",
-      "blog", "news", "forum", "community", "dev", "developer",
-      "test", "staging", "demo", "sandbox", "preview",
-      "ws", "wss", "socket", "websocket", "stream",
-      "git", "svn", "repo", "registry", "npm", "pypi",
-      "internal", "private", "public", "local", "localhost",
-      "root", "system", "server", "servers", "node", "nodes",
-      "sellia", "tunnel", "tunnels", "proxy",
-    }
-
     # Validation result
     struct ValidationResult
       property valid : Bool
@@ -40,7 +23,7 @@ module Sellia::Server
       end
     end
 
-    def initialize
+    def initialize(@reserved_subdomains : Set(String) = Set(String).new)
       @tunnels = {} of String => Tunnel          # id -> tunnel
       @by_subdomain = {} of String => Tunnel     # subdomain -> tunnel
       @by_client = {} of String => Array(Tunnel) # client_id -> tunnels
@@ -112,7 +95,8 @@ module Sellia::Server
 
       # Reserved names check
       normalized = subdomain.downcase
-      if @@reserved_subdomains.includes?(normalized)
+      reserved = @mutex.synchronize { @reserved_subdomains.includes?(normalized) }
+      if reserved
         return ValidationResult.new(false, "Subdomain '#{subdomain}' is reserved")
       end
 
@@ -147,6 +131,13 @@ module Sellia::Server
           end
         end
         removed
+      end
+    end
+
+    # Reload reserved subdomains from database
+    def reload_reserved_subdomains!(new_subdomains : Set(String)) : Nil
+      @mutex.synchronize do
+        @reserved_subdomains = new_subdomains
       end
     end
   end

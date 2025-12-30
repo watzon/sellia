@@ -11,6 +11,8 @@ RUN apk add --no-cache --update \
     openssl-libs-static \
     openssl-dev \
     zlib-static \
+    sqlite-dev \
+    sqlite-static \
     pcre-dev \
     gc-dev \
     libevent-static \

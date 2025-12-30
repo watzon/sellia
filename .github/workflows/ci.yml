@@ -10,6 +10,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci' || 'ci-unprotected' }}
 
     steps:
       - name: Checkout code
@@ -41,6 +43,8 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci' || 'ci-unprotected' }}
 
     defaults:
       run:
@@ -66,6 +70,8 @@ jobs:
   build-binaries:
     name: Build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
     needs: [test, web]
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci' || 'ci-unprotected' }}
     strategy:
       fail-fast: false
       matrix:
@@ -140,6 +146,7 @@ jobs:
               crystal shards \
               gcc musl-dev \
               openssl-dev openssl-libs-static \
+              sqlite-dev sqlite-static \
               yaml-static zlib-static \
               pcre2-dev pcre2-static \
               gc-dev gc-static \
@@ -201,6 +208,8 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     needs: [test, web]
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'ci' || 'ci-unprotected' }}
 
     steps:
       - name: Checkout code

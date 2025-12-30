@@ -18,8 +18,8 @@ Legend: [x] done, [~] in progress, [ ] planned
 - [x] Multiple tunnels via config (`sellia start`)
 - [x] Auto-reconnect with backoff
 - [x] Rate limiting and subdomain validation
-- [ ] Reserved subdomains that persist across restarts
-- [ ] SQLite-backed storage for API keys/reserved subdomains
+- [x] Reserved subdomains that persist across restarts
+- [x] SQLite-backed storage for API keys/reserved subdomains
 - [ ] Documentation polish for self-hosted single-binary workflow
 
 ### Tier 2 (Advanced)
@@ -36,8 +36,8 @@ Legend: [x] done, [~] in progress, [ ] planned
 ## Roadmap
 
 ### Milestone: Complete Tier 1 Storage + Stability
-- [ ] Add SQLite persistence for API keys and reserved subdomains
-- [ ] Reserved subdomain claims (persisted across server restarts)
+- [x] Add SQLite persistence for API keys and reserved subdomains
+- [x] Reserved subdomain claims (persisted across server restarts)
 - [ ] Clarify self-hosted binary + asset embedding docs
 - [ ] Harden error handling and edge cases (timeouts, disconnects)
 
