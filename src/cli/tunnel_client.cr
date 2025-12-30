@@ -226,7 +226,7 @@ module Sellia::CLI
         return
       end
 
-      delay = @reconnect_delay * @reconnect_attempts # Exponential backoff
+      delay = @reconnect_delay * @reconnect_attempts # Linear backoff
       Log.info { "Reconnecting in #{delay.total_seconds.to_i} seconds (attempt #{@reconnect_attempts}/#{@max_reconnect_attempts})..." }
 
       sleep delay
