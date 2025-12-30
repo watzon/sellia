@@ -7,6 +7,8 @@
 # - Auth flow: auth, auth_ok, auth_error
 # - Tunnel management: tunnel_open, tunnel_ready, tunnel_close
 # - Request proxying: request_start, request_body, response_start, response_body, response_end
+# - WebSocket passthrough: ws_upgrade, ws_upgrade_ok, ws_upgrade_error, ws_frame, ws_close
+# - TCP tunneling: tcp_open, tcp_open_ok, tcp_open_error, tcp_data, tcp_close
 # - Keepalive: ping, pong
 
 require "./protocol/message"
@@ -14,6 +16,7 @@ require "./protocol/messages/auth"
 require "./protocol/messages/tunnel"
 require "./protocol/messages/request"
 require "./protocol/messages/websocket"
+require "./protocol/messages/tcp"
 
 module Sellia::Protocol
   # Re-export message types for convenience
@@ -35,4 +38,9 @@ module Sellia::Protocol
   alias WebSocketUpgradeError = Messages::WebSocketUpgradeError
   alias WebSocketFrame = Messages::WebSocketFrame
   alias WebSocketClose = Messages::WebSocketClose
+  alias TcpOpen = Messages::TcpOpen
+  alias TcpOpenOk = Messages::TcpOpenOk
+  alias TcpOpenError = Messages::TcpOpenError
+  alias TcpData = Messages::TcpData
+  alias TcpClose = Messages::TcpClose
 end

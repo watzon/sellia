@@ -21,6 +21,8 @@ module Sellia::CLI
     case command
     when "http"
       run_http_tunnel
+    when "tcp"
+      run_tcp_tunnel
     when "start"
       run_start
     when "auth"
@@ -37,6 +39,82 @@ module Sellia::CLI
       STDERR.puts "#{"Error:".colorize(:red).bold} Unknown command: #{command}"
       STDERR.puts "Run 'sellia help' for usage"
       exit 1
+    end
+  end
+
+  private def self.run_tcp_tunnel
+    config = Config.load
+
+    local_port = 0
+    subdomain : String? = nil
+    local_host = "localhost"
+    server = config.server
+    api_key = config.api_key
+
+    OptionParser.parse do |parser|
+      parser.banner = "Usage: sellia tcp <local-port> [options]"
+
+      parser.on("--subdomain NAME", "-s NAME", "Request specific subdomain") { |s| subdomain = s }
+      parser.on("--host HOST", "-H HOST", "Local host (default: localhost)") { |h| local_host = h }
+      parser.on("--server URL", "Tunnel server URL (default: #{server})") { |s| server = s }
+      parser.on("--api-key KEY", "-k KEY", "API key for authentication") { |k| api_key = k }
+      parser.on("-h", "--help", "Show this help") { puts parser; exit 0 }
+
+      parser.unknown_args do |args|
+        if args.size > 0
+          local_port = args[0].to_i rescue local_port
+        end
+      end
+
+      parser.invalid_option do |flag|
+        STDERR.puts "Unknown option: #{flag}"
+        STDERR.puts parser
+        exit 1
+      end
+    end
+
+    if local_port == 0
+      STDERR.puts "#{"Error:".colorize(:red).bold} Local port is required for TCP tunnels"
+      STDERR.puts ""
+      STDERR.puts "Usage: sellia tcp <local-port>"
+      exit 1
+    end
+
+    puts "#{"Sellia".colorize(:cyan).bold} v#{Sellia::VERSION}"
+    puts "Forwarding TCP to #{"#{local_host}:#{local_port}".colorize(:yellow)}"
+    puts ""
+
+    client = TunnelClient.new(
+      server_url: server,
+      local_port: local_port,
+      api_key: api_key,
+      local_host: local_host,
+      subdomain: subdomain,
+      tunnel_type: "tcp"
+    )
+
+    client.on_connect do |url|
+      puts "#{"Public URL:".colorize(:green).bold} #{url.colorize(:green).underline} -> #{"#{local_host}:#{local_port}".colorize(:yellow)}"
+      puts ""
+      puts "Press #{"Ctrl+C".colorize(:yellow)} to stop"
+      puts ""
+    end
+
+    client.on_tcp_connection do |remote_addr, connection_id|
+      timestamp = Time.local.to_s("%H:%M:%S")
+      puts "[#{timestamp.colorize(:dark_gray)}] #{"TCP".colorize(:cyan).bold} #{remote_addr.colorize(:yellow)}"
+    end
+
+    client.on_error do |error|
+      STDERR.puts "#{"Error:".colorize(:red).bold} #{error}"
+    end
+
+    setup_signal_handlers(client)
+
+    client.start
+
+    while client.running?
+      sleep 1.second
     end
   end
 
@@ -231,6 +309,8 @@ module Sellia::CLI
     clients = [] of TunnelClient
 
     config.tunnels.each do |name, tunnel_config|
+      tunnel_type = tunnel_config.type || "http"
+
       client = TunnelClient.new(
         server_url: config.server,
         local_port: tunnel_config.port,
@@ -238,11 +318,14 @@ module Sellia::CLI
         local_host: tunnel_config.local_host,
         subdomain: tunnel_config.subdomain,
         auth: tunnel_config.auth,
-        routes: tunnel_config.routes
+        routes: tunnel_config.routes,
+        tunnel_type: tunnel_type
       )
 
       client.on_connect do |url|
-        if client.routes.empty?
+        if tunnel_type == "tcp"
+          puts "[#{name.colorize(:cyan)}] #{"TCP".colorize(:cyan).bold} #{url.colorize(:green).underline} -> #{"#{tunnel_config.local_host}:#{tunnel_config.port}".colorize(:yellow)}"
+        elsif client.routes.empty?
           puts "[#{name.colorize(:cyan)}] #{url.colorize(:green).underline} -> #{"#{tunnel_config.local_host}:#{tunnel_config.port}".colorize(:yellow)}"
         else
           puts "[#{name.colorize(:cyan)}] #{url.colorize(:green).underline}"
@@ -260,23 +343,30 @@ module Sellia::CLI
         end
       end
 
-      client.on_request do |req|
-        timestamp = Time.local.to_s("%H:%M:%S")
-        method_color = case req.method
-                       when "GET"    then :green
-                       when "POST"   then :blue
-                       when "PUT"    then :yellow
-                       when "PATCH"  then :yellow
-                       when "DELETE" then :red
-                       else               :white
-                       end
-        puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{req.method.colorize(method_color).bold} #{req.path}"
-      end
+      if tunnel_type == "http"
+        client.on_request do |req|
+          timestamp = Time.local.to_s("%H:%M:%S")
+          method_color = case req.method
+                         when "GET"    then :green
+                         when "POST"   then :blue
+                         when "PUT"    then :yellow
+                         when "PATCH"  then :yellow
+                         when "DELETE" then :red
+                         else               :white
+                         end
+          puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{req.method.colorize(method_color).bold} #{req.path}"
+        end
 
-      client.on_websocket do |path, _request_id|
-        timestamp = Time.local.to_s("%H:%M:%S")
-        clean_path = path.split('?').first
-        puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{"WS".colorize(:magenta).bold} #{clean_path}"
+        client.on_websocket do |path, _request_id|
+          timestamp = Time.local.to_s("%H:%M:%S")
+          clean_path = path.split('?').first
+          puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{"WS".colorize(:magenta).bold} #{clean_path}"
+        end
+      else
+        client.on_tcp_connection do |remote_addr, _connection_id|
+          timestamp = Time.local.to_s("%H:%M:%S")
+          puts "[#{timestamp.colorize(:dark_gray)}] [#{name.colorize(:cyan)}] #{"TCP".colorize(:cyan).bold} #{remote_addr.colorize(:yellow)}"
+        end
       end
 
       client.on_error do |error|
@@ -449,6 +539,7 @@ module Sellia::CLI
     puts ""
     puts "#{"Commands:".colorize(:yellow).bold}"
     puts "  #{"http".colorize(:green)} <port>     Create HTTP tunnel to local port"
+    puts "  #{"tcp".colorize(:green)} <port>      Create TCP tunnel to local port"
     puts "  #{"start".colorize(:green)}           Start tunnels from config file"
     puts "  #{"auth".colorize(:green)}            Manage authentication"
     puts "  #{"admin".colorize(:green)}           Admin commands (requires admin API key)"
@@ -460,6 +551,8 @@ module Sellia::CLI
     puts "  sellia http 3000                    Tunnel to localhost:3000"
     puts "  sellia http 3000 -s myapp           With custom subdomain"
     puts "  sellia http 3000 --auth user:pass   With basic auth"
+    puts "  sellia tcp 22 -s my-ssh             TCP tunnel for SSH"
+    puts "  sellia tcp 5432 -s my-db            TCP tunnel for PostgreSQL"
     puts "  sellia start                        Start from sellia.yml"
     puts "  sellia start -c custom.yml          Start from custom config"
     puts ""
@@ -471,6 +564,12 @@ module Sellia::CLI
     puts "  #{"-i, --inspector-port".colorize(:cyan)}    Inspector UI port (default: 4040)"
     puts "  #{"-o, --open".colorize(:cyan)}              Open inspector in browser"
     puts "  #{"--no-inspector".colorize(:cyan)}          Disable the request inspector"
+    puts "  #{"--server".colorize(:cyan)} URL            Tunnel server URL"
+    puts ""
+    puts "#{"TCP Options:".colorize(:yellow).bold}"
+    puts "  #{"-s, --subdomain".colorize(:cyan)} NAME    Request specific subdomain"
+    puts "  #{"-H, --host".colorize(:cyan)} HOST         Local host (default: localhost)"
+    puts "  #{"-k, --api-key".colorize(:cyan)} KEY       API key for authentication"
     puts "  #{"--server".colorize(:cyan)} URL            Tunnel server URL"
     puts ""
     puts "#{"Configuration:".colorize(:yellow).bold}"
@@ -486,8 +585,10 @@ module Sellia::CLI
     puts "      #{"web:".colorize(:yellow)}"
     puts "        port: 3000"
     puts "        subdomain: myapp"
-    puts "      #{"api:".colorize(:yellow)}"
-    puts "        port: 8080"
+    puts "      #{"ssh:".colorize(:yellow)}"
+    puts "        #{"type:".colorize(:cyan)} tcp"
+    puts "        port: 22"
+    puts "        subdomain: my-ssh"
     puts ""
     puts "#{"Environment Variables:".colorize(:yellow).bold}"
     puts "  #{"SELLIA_SERVER".colorize(:cyan)}     Tunnel server URL"

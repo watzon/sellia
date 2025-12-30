@@ -5,6 +5,7 @@ require "../../src/server/tunnel_registry"
 require "../../src/server/auth_provider"
 require "../../src/server/pending_request"
 require "../../src/server/pending_websocket"
+require "../../src/server/pending_tcp"
 require "../../src/server/rate_limiter"
 
 class Sellia::Server::WSGateway
@@ -29,6 +30,7 @@ describe Sellia::Server::WSGateway do
       auth_provider: Sellia::Server::AuthProvider.new(false),
       pending_requests: Sellia::Server::PendingRequestStore.new,
       pending_websockets: Sellia::Server::PendingWebSocketStore.new,
+      pending_tcps: Sellia::Server::PendingTcpStore.new,
       rate_limiter: Sellia::Server::CompositeRateLimiter.new(enabled: false),
       domain: "localhost",
       port: 3000,
@@ -55,6 +57,7 @@ describe Sellia::Server::WSGateway do
       auth_provider: Sellia::Server::AuthProvider.new(false),
       pending_requests: Sellia::Server::PendingRequestStore.new,
       pending_websockets: Sellia::Server::PendingWebSocketStore.new,
+      pending_tcps: Sellia::Server::PendingTcpStore.new,
       rate_limiter: Sellia::Server::CompositeRateLimiter.new(enabled: false),
       domain: "localhost",
       port: 3000,
