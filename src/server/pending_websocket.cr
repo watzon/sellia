@@ -54,8 +54,13 @@ module Sellia::Server
         setup_handlers(socket)
         Log.info { "WebSocket #{@id}: handlers set up, starting socket.run" }
         # Start reading frames - this blocks until connection closes
-        socket.run
-        Log.info { "WebSocket #{@id}: socket.run returned (connection closed)" }
+        begin
+          socket.run
+          Log.info { "WebSocket #{@id}: socket.run returned (connection closed normally)" }
+        rescue ex : Exception
+          Log.error { "WebSocket #{@id}: socket.run raised exception: #{ex.class}: #{ex.message}" }
+          Log.error { ex.backtrace.join("\n") }
+        end
       end
 
       # Call handler directly - it spawns its own fiber internally
