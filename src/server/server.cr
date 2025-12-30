@@ -5,8 +5,11 @@ require "./tunnel_registry"
 require "./connection_manager"
 require "./pending_request"
 require "./pending_websocket"
+require "./pending_tcp"
 require "./auth_provider"
 require "./rate_limiter"
+require "./port_allocator"
+require "./tcp_ingress"
 require "./ws_gateway"
 require "./http_ingress"
 require "./admin_api"
@@ -26,13 +29,18 @@ module Sellia::Server
     property landing_enabled : Bool
     property db_path : String
     property db_enabled : Bool
+    property tcp_port_range_start : Int32
+    property tcp_port_range_end : Int32
 
     @tunnel_registry : TunnelRegistry
     @connection_manager : ConnectionManager
     @pending_requests : PendingRequestStore
     @pending_websockets : PendingWebSocketStore
+    @pending_tcps : PendingTcpStore
     @auth_provider : AuthProvider
     @rate_limiter : CompositeRateLimiter
+    @port_allocator : PortAllocator
+    @tcp_ingress : TCPIngress
     @ws_gateway : WSGateway
     @http_ingress : HTTPIngress
     @admin_api : AdminAPI
@@ -50,6 +58,7 @@ module Sellia::Server
       @landing_enabled : Bool = true,
       db_path : String? = nil,
       @db_enabled : Bool = true,
+      tcp_port_range : String? = nil,
     )
       # Set default db path if not provided
       @db_path = db_path || File.join(Path.home, ".sellia", "sellia.db")
@@ -63,9 +72,25 @@ module Sellia::Server
       @connection_manager = ConnectionManager.new
       @pending_requests = PendingRequestStore.new
       @pending_websockets = PendingWebSocketStore.new
+      @pending_tcps = PendingTcpStore.new
       @auth_provider = AuthProvider.new(@require_auth, @master_key, use_database: database_available?)
       @rate_limiter = CompositeRateLimiter.new(enabled: @rate_limiting)
       @admin_api = AdminAPI.new(@auth_provider, @tunnel_registry)
+
+      # Parse TCP port range
+      # 0 = random allocation (default), "5000-6000" = fixed range
+      @tcp_port_range_start, @tcp_port_range_end = parse_tcp_port_range(tcp_port_range)
+
+      @port_allocator = PortAllocator.new(@tcp_port_range_start, @tcp_port_range_end)
+
+      @tcp_ingress = TCPIngress.new(
+        tunnel_registry: @tunnel_registry,
+        connection_manager: @connection_manager,
+        pending_tcps: @pending_tcps,
+        rate_limiter: @rate_limiter,
+        port_allocator: @port_allocator,
+        host: @host
+      )
 
       @ws_gateway = WSGateway.new(
         connection_manager: @connection_manager,
@@ -73,10 +98,12 @@ module Sellia::Server
         auth_provider: @auth_provider,
         pending_requests: @pending_requests,
         pending_websockets: @pending_websockets,
+        pending_tcps: @pending_tcps,
         rate_limiter: @rate_limiter,
         domain: @domain,
         port: @port,
-        use_https: @use_https
+        use_https: @use_https,
+        tcp_ingress: @tcp_ingress
       )
 
       @http_ingress = HTTPIngress.new(
@@ -90,8 +117,48 @@ module Sellia::Server
       )
     end
 
+    # Parse TCP port range string
+    # Returns (start, end) tuple
+    # 0 or nil = random mode
+    # "5000-6000" = fixed range
+    private def parse_tcp_port_range(range : String?) : Tuple(Int32, Int32)
+      return {0, 0} if range.nil? || range.empty?
+
+      if range == "0"
+        return {0, 0}
+      end
+
+      if match = range.match(/^(\d+)-(\d+)$/)
+        start = match[1].to_i
+        end_port = match[2].to_i
+
+        if start <= 0 || end_port <= 0
+          Log.warn { "Invalid TCP port range: #{range}, using random allocation" }
+          return {0, 0}
+        end
+
+        if start >= end_port
+          Log.warn { "Invalid TCP port range (start >= end): #{range}, using random allocation" }
+          return {0, 0}
+        end
+
+        if (end_port - start) > 10000
+          Log.warn { "TCP port range too large (>10000), using random allocation" }
+          return {0, 0}
+        end
+
+        return {start, end_port}
+      end
+
+      Log.warn { "Invalid TCP port range format: #{range}, using random allocation" }
+      {0, 0}
+    end
+
     def start
       @running = true
+
+      # Start TCP ingress
+      @tcp_ingress.start
 
       server = HTTP::Server.new do |context|
         handle_request(context)
@@ -108,6 +175,11 @@ module Sellia::Server
       Log.info { "Domain: #{@domain}" }
       Log.info { "Auth required: #{@require_auth}" }
       Log.info { "Rate limiting: #{@rate_limiting}" }
+      if @tcp_port_range_start == 0
+        Log.info { "TCP: Random port allocation" }
+      else
+        Log.info { "TCP: Port range #{@tcp_port_range_start}-#{@tcp_port_range_end}" }
+      end
 
       server.listen
     end
@@ -215,6 +287,7 @@ module Sellia::Server
     landing_enabled = ENV["SELLIA_DISABLE_LANDING"]? != "true"
     db_path = ENV["SELLIA_DB_PATH"]? || File.join(Path.home, ".sellia", "sellia.db")
     db_enabled = ENV["SELLIA_NO_DB"]? != "true" && ENV["SELLIA_NO_DB"]? != "1"
+    tcp_port_range = ENV["SELLIA_TCP_PORT_RANGE"]? # "0" for random, "5000-6000" for range
 
     # Parse command-line options (override env vars)
     OptionParser.parse do |parser|
@@ -233,6 +306,7 @@ module Sellia::Server
       parser.on("--no-landing", "Disable the landing page") { landing_enabled = false }
       parser.on("--db-path PATH", "Path to SQLite database") { |p| db_path = p }
       parser.on("--no-db", "Disable database (use in-memory defaults)") { db_enabled = false }
+      parser.on("--tcp-port-range RANGE", "TCP port range (0 for random, 5000-6000 for fixed)") { |r| tcp_port_range = r }
       parser.on("-h", "--help", "Show this help") do
         puts parser
         exit 0
@@ -259,7 +333,8 @@ module Sellia::Server
       rate_limiting: rate_limiting,
       landing_enabled: landing_enabled,
       db_path: db_path,
-      db_enabled: db_enabled
+      db_enabled: db_enabled,
+      tcp_port_range: tcp_port_range
     ).start
   end
 end

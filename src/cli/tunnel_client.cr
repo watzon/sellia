@@ -4,6 +4,7 @@ require "log"
 require "../core/protocol"
 require "./local_proxy"
 require "./websocket_proxy"
+require "./tcp_proxy"
 require "./config"
 require "./request_store"
 require "./router"
@@ -21,6 +22,7 @@ module Sellia::CLI
     property local_host : String
     property subdomain : String?
     property auth : String?
+    property tunnel_type : String
 
     # State
     property public_url : String?
@@ -51,10 +53,14 @@ module Sellia::CLI
     # Active WebSocket connections for passthrough
     @active_websockets : Hash(String, WebSocketProxy) = {} of String => WebSocketProxy
 
+    # Active TCP connections
+    @active_tcps : Hash(String, TcpProxy) = {} of String => TcpProxy
+
     # Callbacks
     @on_connect : (String ->)?
     @on_request : (Protocol::Messages::RequestStart ->)?
-    @on_websocket : (String, String ->)? # (path, request_id)
+    @on_websocket : (String, String ->)?      # (path, request_id)
+    @on_tcp_connection : (String, String ->)? # (remote_addr, connection_id)
     @on_disconnect : (->)?
     @on_error : (String ->)?
 
@@ -67,6 +73,7 @@ module Sellia::CLI
       @auth : String? = nil,
       @request_store : RequestStore? = nil,
       routes : Array(RouteConfig) = [] of RouteConfig,
+      @tunnel_type : String = "http",
     )
       @proxy = LocalProxy.new(@local_host, @local_port)
       @router = Router.new(routes, @local_host, @local_port > 0 ? @local_port : nil)
@@ -102,6 +109,11 @@ module Sellia::CLI
       @on_websocket = block
     end
 
+    # Set callback for TCP connections
+    def on_tcp_connection(&block : String, String ->)
+      @on_tcp_connection = block
+    end
+
     # Start the tunnel client - connects and begins processing
     def start
       @running = true
@@ -125,6 +137,10 @@ module Sellia::CLI
       # Close all active WebSocket connections
       @active_websockets.each_value(&.close)
       @active_websockets.clear
+
+      # Close all active TCP connections
+      @active_tcps.each_value(&.close)
+      @active_tcps.clear
     end
 
     # Returns true if the client is currently running (may be reconnecting)
@@ -201,6 +217,10 @@ module Sellia::CLI
         @active_websockets.each_value(&.close)
         @active_websockets.clear
 
+        # Close all active TCP connections
+        @active_tcps.each_value(&.close)
+        @active_tcps.clear
+
         @on_disconnect.try(&.call)
 
         # Attempt reconnection if still running
@@ -248,9 +268,9 @@ module Sellia::CLI
     end
 
     private def open_tunnel
-      Log.debug { "Requesting tunnel open for local port #{@local_port}" }
+      Log.debug { "Requesting tunnel open for local port #{@local_port} (type: #{@tunnel_type})" }
       send_message(Protocol::Messages::TunnelOpen.new(
-        tunnel_type: "http",
+        tunnel_type: @tunnel_type,
         local_port: @local_port,
         subdomain: @subdomain,
         auth: @auth
@@ -281,6 +301,12 @@ module Sellia::CLI
         handle_websocket_frame(message)
       when Protocol::Messages::WebSocketClose
         handle_websocket_close(message)
+      when Protocol::Messages::TcpOpen
+        handle_tcp_open(message)
+      when Protocol::Messages::TcpData
+        handle_tcp_data(message)
+      when Protocol::Messages::TcpClose
+        handle_tcp_close(message)
       end
     rescue ex
       Log.error { "Error handling message: #{ex.message}" }
@@ -585,6 +611,58 @@ module Sellia::CLI
     private def handle_websocket_close(message : Protocol::Messages::WebSocketClose)
       if ws_proxy = @active_websockets.delete(message.request_id)
         ws_proxy.close(message.code, message.reason)
+      end
+    end
+
+    private def handle_tcp_open(message : Protocol::Messages::TcpOpen)
+      Log.debug { "TCP connection request: #{message.remote_addr}" }
+
+      tcp_proxy = TcpProxy.new(message.connection_id, @local_host, @local_port)
+
+      tcp_proxy.on_data do |data|
+        send_message(Protocol::Messages::TcpData.new(
+          connection_id: message.connection_id,
+          data: data
+        ))
+      end
+
+      tcp_proxy.on_close do |reason|
+        send_message(Protocol::Messages::TcpClose.new(
+          connection_id: message.connection_id,
+          reason: reason
+        ))
+        @active_tcps.delete(message.connection_id)
+      end
+
+      if tcp_proxy.connect
+        @active_tcps[message.connection_id] = tcp_proxy
+        send_message(Protocol::Messages::TcpOpenOk.new(
+          connection_id: message.connection_id
+        ))
+        @on_tcp_connection.try(&.call(message.remote_addr, message.connection_id))
+      else
+        send_message(Protocol::Messages::TcpOpenError.new(
+          connection_id: message.connection_id,
+          message: "Failed to connect to local service"
+        ))
+      end
+    rescue ex
+      Log.error { "TCP open error for #{message.connection_id}: #{ex.class}: #{ex.message}" }
+      send_message(Protocol::Messages::TcpOpenError.new(
+        connection_id: message.connection_id,
+        message: "Internal error: #{ex.message}"
+      ))
+    end
+
+    private def handle_tcp_data(message : Protocol::Messages::TcpData)
+      if proxy = @active_tcps[message.connection_id]?
+        proxy.send_data(message.data)
+      end
+    end
+
+    private def handle_tcp_close(message : Protocol::Messages::TcpClose)
+      if proxy = @active_tcps.delete(message.connection_id)
+        proxy.close(message.reason)
       end
     end
 

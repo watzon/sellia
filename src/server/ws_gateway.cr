@@ -6,6 +6,7 @@ require "./tunnel_registry"
 require "./auth_provider"
 require "./pending_request"
 require "./pending_websocket"
+require "./pending_tcp"
 require "./rate_limiter"
 require "../core/protocol"
 
@@ -17,10 +18,12 @@ module Sellia::Server
     property auth_provider : AuthProvider
     property pending_requests : PendingRequestStore
     property pending_websockets : PendingWebSocketStore
+    property pending_tcps : PendingTcpStore
     property rate_limiter : CompositeRateLimiter
     property domain : String
     property port : Int32
     property use_https : Bool
+    property tcp_ingress : TCPIngress?
 
     PING_INTERVAL = 30.seconds
     PING_TIMEOUT  = 60.seconds
@@ -31,10 +34,12 @@ module Sellia::Server
       @auth_provider : AuthProvider,
       @pending_requests : PendingRequestStore,
       @pending_websockets : PendingWebSocketStore,
+      @pending_tcps : PendingTcpStore,
       @rate_limiter : CompositeRateLimiter,
       @domain : String = "localhost",
       @port : Int32 = 3000,
       @use_https : Bool = false,
+      @tcp_ingress : TCPIngress? = nil,
     )
       spawn_heartbeat_loop
     end
@@ -102,6 +107,14 @@ module Sellia::Server
         handle_ws_frame(client, message)
       when Protocol::Messages::WebSocketClose
         handle_ws_close(client, message)
+      when Protocol::Messages::TcpOpenOk
+        handle_tcp_open_ok(client, message)
+      when Protocol::Messages::TcpOpenError
+        handle_tcp_open_error(client, message)
+      when Protocol::Messages::TcpData
+        handle_tcp_data(client, message)
+      when Protocol::Messages::TcpClose
+        handle_tcp_close(client, message)
       end
     end
 
@@ -139,6 +152,17 @@ module Sellia::Server
         return
       end
 
+      tunnel_type = message.tunnel_type
+
+      # For TCP tunnels, we need tcp_ingress to be configured
+      if tunnel_type == "tcp" && @tcp_ingress.nil?
+        client.send(Protocol::Messages::TunnelClose.new(
+          tunnel_id: "",
+          reason: "TCP tunnels not enabled on this server"
+        ))
+        return
+      end
+
       # Determine subdomain
       subdomain = message.subdomain
       if subdomain.nil? || subdomain.empty?
@@ -161,31 +185,62 @@ module Sellia::Server
         id: tunnel_id,
         subdomain: subdomain,
         client_id: client.id,
-        auth: message.auth
+        auth: message.auth,
+        tunnel_type: tunnel_type
       )
 
       @tunnel_registry.register(tunnel)
 
-      # Build public URL
-      # When use_https is true, we're behind a reverse proxy - don't append internal port
-      protocol = @use_https ? "https" : "http"
-      port_suffix = @use_https ? "" : (@port == 80 ? "" : ":#{@port}")
-      url = "#{protocol}://#{subdomain}.#{@domain}#{port_suffix}"
+      # Build public URL based on tunnel type
+      if tunnel_type == "tcp"
+        # Allocate port for TCP tunnel
+        port = @tcp_ingress.not_nil!.allocate_port(tunnel_id)
 
-      client.send(Protocol::Messages::TunnelReady.new(
-        tunnel_id: tunnel_id,
-        url: url,
-        subdomain: subdomain
-      ))
+        if port.nil?
+          @tunnel_registry.unregister(tunnel_id)
+          client.send(Protocol::Messages::TunnelClose.new(
+            tunnel_id: "",
+            reason: "No available ports for TCP tunnel"
+          ))
+          return
+        end
 
-      Log.info { "Tunnel opened: #{subdomain}.#{@domain} -> client #{client.id}" }
+        # TCP URL format: domain:port
+        url = "#{@domain}:#{port}"
+
+        client.send(Protocol::Messages::TunnelReady.new(
+          tunnel_id: tunnel_id,
+          url: url,
+          subdomain: subdomain
+        ))
+
+        Log.info { "TCP tunnel opened: #{@domain}:#{port} (#{subdomain}) -> client #{client.id}" }
+      else
+        # HTTP tunnel URL
+        protocol = @use_https ? "https" : "http"
+        port_suffix = @use_https ? "" : (@port == 80 ? "" : ":#{@port}")
+        url = "#{protocol}://#{subdomain}.#{@domain}#{port_suffix}"
+
+        client.send(Protocol::Messages::TunnelReady.new(
+          tunnel_id: tunnel_id,
+          url: url,
+          subdomain: subdomain
+        ))
+
+        Log.info { "HTTP tunnel opened: #{subdomain}.#{@domain} -> client #{client.id}" }
+      end
     end
 
     private def handle_tunnel_close(client : ClientConnection, message : Protocol::Messages::TunnelClose)
       if tunnel = @tunnel_registry.find_by_id(message.tunnel_id)
         if tunnel.client_id == client.id
+          # Release TCP port if this is a TCP tunnel
+          if tunnel.tunnel_type == "tcp"
+            @tcp_ingress.try(&.release_port(tunnel.id))
+          end
+
           @tunnel_registry.unregister(message.tunnel_id)
-          Log.info { "Tunnel closed: #{tunnel.subdomain}" }
+          Log.info { "Tunnel closed: #{tunnel.subdomain} (#{tunnel.tunnel_type})" }
         end
       end
     end
@@ -257,7 +312,12 @@ module Sellia::Server
       # Remove all tunnels for this client
       tunnels = @tunnel_registry.unregister_client(client.id)
       tunnels.each do |tunnel|
-        Log.info { "Tunnel removed: #{tunnel.subdomain}" }
+        Log.info { "Tunnel removed: #{tunnel.subdomain} (#{tunnel.tunnel_type})" }
+
+        # Release TCP port if this is a TCP tunnel
+        if tunnel.tunnel_type == "tcp"
+          @tcp_ingress.try(&.release_port(tunnel.id))
+        end
 
         # Clean up any pending requests for this tunnel
         removed = @pending_requests.remove_by_tunnel(tunnel.id)
@@ -267,6 +327,10 @@ module Sellia::Server
         ws_removed = @pending_websockets.remove_by_tunnel(tunnel.id)
         Log.debug { "Cleaned up #{ws_removed} pending WebSockets" } if ws_removed > 0
 
+        # Clean up any pending TCP connections for this tunnel
+        tcp_removed = @pending_tcps.remove_by_tunnel(tunnel.id)
+        Log.debug { "Cleaned up #{tcp_removed} pending TCP connections" } if tcp_removed > 0
+
         # Reset rate limits for this tunnel
         @rate_limiter.reset_tunnel(tunnel.id)
       end
@@ -275,6 +339,48 @@ module Sellia::Server
       @rate_limiter.reset_client(client.id)
 
       @connection_manager.unregister(client.id)
+    end
+
+    # TCP message handlers
+
+    private def handle_tcp_open_ok(client : ClientConnection, message : Protocol::Messages::TcpOpenOk)
+      if pending = @pending_tcps.get(message.connection_id)
+        Log.debug { "TCP connection #{message.connection_id} established by CLI" }
+
+        # Create TcpProxy and signal connected
+        proxy = TcpProxy.new(message.connection_id, pending.tunnel_id, pending)
+        pending.signal_connected(proxy)
+      else
+        Log.debug { "TCP open OK for unknown connection #{message.connection_id}" }
+      end
+    end
+
+    private def handle_tcp_open_error(client : ClientConnection, message : Protocol::Messages::TcpOpenError)
+      if pending = @pending_tcps.remove(message.connection_id)
+        Log.debug { "TCP connection #{message.connection_id} failed: #{message.message}" }
+        pending.signal_failed(message.message)
+      end
+    end
+
+    private def handle_tcp_data(client : ClientConnection, message : Protocol::Messages::TcpData)
+      # Forward data to TCP ingress -> external client
+      unless ingress = @tcp_ingress
+        Log.warn { "Received TCP data but tcp_ingress not configured" }
+        return
+      end
+
+      unless ingress.send_data(message.connection_id, message.data)
+        Log.debug { "Failed to send TCP data for unknown connection #{message.connection_id}" }
+      end
+    end
+
+    private def handle_tcp_close(client : ClientConnection, message : Protocol::Messages::TcpClose)
+      unless ingress = @tcp_ingress
+        return
+      end
+
+      Log.debug { "TCP close for #{message.connection_id}: #{message.reason}" }
+      ingress.close_connection(message.connection_id, message.reason)
     end
   end
 end

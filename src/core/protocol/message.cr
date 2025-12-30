@@ -27,6 +27,11 @@ module Sellia::Protocol
       ws_upgrade_error: Messages::WebSocketUpgradeError,
       ws_frame:         Messages::WebSocketFrame,
       ws_close:         Messages::WebSocketClose,
+      tcp_open:         Messages::TcpOpen,
+      tcp_open_ok:      Messages::TcpOpenOk,
+      tcp_open_error:   Messages::TcpOpenError,
+      tcp_data:         Messages::TcpData,
+      tcp_close:        Messages::TcpClose,
     }
 
     # Abstract method that each message type must implement
