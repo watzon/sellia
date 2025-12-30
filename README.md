@@ -216,16 +216,47 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### TLS Configuration
 
-Sellia uses Cloudflare DNS challenge to obtain wildcard certificates, providing instant HTTPS for all subdomains with no delay on first request.
+Sellia requires TLS certificates to serve HTTPS tunnels. You provide your own certificates - giving you flexibility to use Cloudflare Origin Certificates, Let's Encrypt, self-signed certs, or any other valid certificate.
 
-**Setup:**
+**Quick Setup with Cloudflare Origin Certificate (Recommended):**
 
 1. Add your domain to [Cloudflare](https://cloudflare.com) (free tier works)
-2. Create an [API token](https://dash.cloudflare.com/profile/api-tokens) with `Zone:DNS:Edit` permission
-3. Add to `.env`: `CLOUDFLARE_API_TOKEN=your-token-here`
-4. Start/restart: `docker compose -f docker-compose.prod.yml up -d`
+2. Go to **SSL/TLS** → **Origin Server** → **Create Certificate**
+3. Select:
+   - Hostnames: `*.yourdomain.com` and `yourdomain.com`
+   - Validity: 15 years
+   - Key format: PEM (default)
+4. Click **Create** and download the certificate and key
+5. Place them in `./certs/` directory:
+   ```
+   certs/
+   ├── cert.pem  # Origin certificate
+   └── key.pem   # Private key
+   ```
+6. Update `.env` with your domain:
+   ```bash
+   SELLIA_DOMAIN=yourdomain.com
+   ```
 
-> **Note:** If you prefer a different TLS approach, you can customize `deploy/Caddyfile` to use any method Caddy supports (on-demand TLS, manual certs, etc.).
+**Alternative Certificate Sources:**
+
+- **Let's Encrypt**: Generate certificates yourself using certbot or another ACME client, then place `cert.pem` and `key.pem` in the `certs/` directory
+- **Self-signed**: Generate your own certificates for local testing (note: browsers will show warnings)
+
+**Example .env file:**
+
+```bash
+SELLIA_DOMAIN=yourdomain.com
+SELLIA_MASTER_KEY=$(openssl rand -hex 32)
+SELLIA_REQUIRE_AUTH=true
+SELLIA_USE_HTTPS=true
+```
+
+**Start the server:**
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
 
 ## Development
 

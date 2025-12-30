@@ -1,14 +1,20 @@
 # Sellia Caddyfile
 #
-# Uses wildcard certificates via Cloudflare DNS challenge.
+# TLS Certificates:
+#   Place your certificate and key in /certs/ directory:
+#   - /certs/cert.pem (certificate)
+#   - /certs/key.pem (private key)
 #
-# Required: CLOUDFLARE_API_TOKEN environment variable
-# Create token at: https://dash.cloudflare.com/profile/api-tokens
-# Token needs: Zone:DNS:Edit permission for your domain
+#   For Cloudflare Origin Certificates:
+#   1. Go to Cloudflare Dashboard > SSL/TLS > Origin Server > Create Certificate
+#   2. Download the certificate and key
+#   3. Place them in the certs/ directory
+#
+#   The docker-compose.yml should mount this directory:
+#   volumes:
+#     - ./certs:/certs:ro
 
 {
-	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-
 	# Disable HTTP/3 - it can cause request cancellation issues with tunneled traffic
 	servers {
 		protocols h1 h2
@@ -20,10 +26,10 @@
 	reverse_proxy sellia-server:3000 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
-		header_up Connection {>Connection}
-		header_up Upgrade {>Upgrade}
 		flush_interval -1
 	}
+
+	tls /certs/cert.pem /certs/key.pem
 
 	log {
 		output file /var/log/caddy/tunnels.log
@@ -36,10 +42,10 @@
 	reverse_proxy sellia-server:3000 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
-		header_up Connection {>Connection}
-		header_up Upgrade {>Upgrade}
 		flush_interval -1
 	}
+
+	tls /certs/cert.pem /certs/key.pem
 
 	log {
 		output file /var/log/caddy/sellia.log
