@@ -223,6 +223,8 @@ module Sellia::Server
     # Run the WebSocket frame reading loop
     private def run_websocket_frame_loop(request_id : String, ws_protocol : HTTP::WebSocket::Protocol, pending_ws : PendingWebSocket, io : IO)
       buffer = Bytes.new(8192)
+      message_buffer = IO::Memory.new
+      message_opcode : HTTP::WebSocket::Protocol::Opcode? = nil
 
       Log.info { "WebSocket #{request_id}: starting frame loop" }
 
@@ -253,31 +255,46 @@ module Sellia::Server
             ws_protocol.close
             break
           when HTTP::WebSocket::Protocol::Opcode::TEXT
-            # Text frame - forward to CLI
-            payload = Bytes.new(info.size)
-            payload.copy_from(buffer.to_unsafe, info.size)
+            # Text frame - buffer until final and forward to CLI
+            message_opcode ||= HTTP::WebSocket::Protocol::Opcode::TEXT
+            message_buffer.write(buffer[0, info.size])
 
             if info.final
-              Log.debug { "WebSocket #{request_id}: received text frame: #{String.new(payload)}" }
+              payload = Bytes.new(message_buffer.size)
+              payload.copy_from(message_buffer.to_slice)
+              Log.debug { "WebSocket #{request_id}: received text message, size=#{payload.size}" }
               pending_ws.handle_frame(0x01_u8, payload)
+              message_buffer.clear
+              message_opcode = nil
             end
           when HTTP::WebSocket::Protocol::Opcode::BINARY
-            # Binary frame - forward to CLI
-            payload = Bytes.new(info.size)
-            payload.copy_from(buffer.to_unsafe, info.size)
+            # Binary frame - buffer until final and forward to CLI
+            message_opcode ||= HTTP::WebSocket::Protocol::Opcode::BINARY
+            message_buffer.write(buffer[0, info.size])
 
             if info.final
-              Log.debug { "WebSocket #{request_id}: received binary frame, #{info.size} bytes" }
+              payload = Bytes.new(message_buffer.size)
+              payload.copy_from(message_buffer.to_slice)
+              Log.debug { "WebSocket #{request_id}: received binary message, size=#{payload.size}" }
               pending_ws.handle_frame(0x02_u8, payload)
+              message_buffer.clear
+              message_opcode = nil
             end
           when HTTP::WebSocket::Protocol::Opcode::CONTINUATION
-            # Continuation frame - accumulate and forward when final
-            payload = Bytes.new(info.size)
-            payload.copy_from(buffer.to_unsafe, info.size)
-
-            if info.final
-              Log.debug { "WebSocket #{request_id}: received continuation frame, #{info.size} bytes (final)" }
-              pending_ws.handle_frame(0x00_u8, payload)
+            # Continuation frame - append to buffer and forward when final
+            if message_opcode
+              message_buffer.write(buffer[0, info.size])
+              if info.final
+                payload = Bytes.new(message_buffer.size)
+                payload.copy_from(message_buffer.to_slice)
+                Log.debug { "WebSocket #{request_id}: received continuation, size=#{payload.size} (final)" }
+                opcode = message_opcode == HTTP::WebSocket::Protocol::Opcode::TEXT ? 0x01_u8 : 0x02_u8
+                pending_ws.handle_frame(opcode, payload)
+                message_buffer.clear
+                message_opcode = nil
+              end
+            else
+              Log.warn { "WebSocket #{request_id}: continuation without initial opcode" }
             end
           else
             Log.warn { "WebSocket #{request_id}: unknown opcode #{info.opcode}" }
