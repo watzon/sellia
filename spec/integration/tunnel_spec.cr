@@ -1,8 +1,21 @@
 require "../spec_helper"
+require "base64"
 require "http/server"
 require "http/client"
 require "../../src/server/server"
 require "../../src/cli/tunnel_client"
+
+class Sellia::Server::Server
+  def set_rate_limiter_for_test(limiter : Sellia::Server::CompositeRateLimiter)
+    @rate_limiter = limiter
+    @http_ingress.rate_limiter = limiter
+    @ws_gateway.rate_limiter = limiter
+  end
+
+  def set_request_timeout_for_test(timeout : Time::Span)
+    @http_ingress.request_timeout = timeout
+  end
+end
 
 # End-to-end integration tests for the Sellia tunnel system.
 #
@@ -619,6 +632,42 @@ describe "End-to-end tunnel integration" do
 
       client.stop
     end
+
+    it "rejects missing API key when auth is required" do
+      server_port = 19958
+      error_received = Channel(String).new
+
+      tunnel_server = Sellia::Server::Server.new(
+        host: "127.0.0.1",
+        port: server_port,
+        domain: "127.0.0.1:#{server_port}",
+        require_auth: true,
+        master_key: "required-key"
+      )
+
+      spawn { tunnel_server.start }
+      sleep 0.2.seconds
+
+      client = Sellia::CLI::TunnelClient.new(
+        server_url: "http://127.0.0.1:#{server_port}",
+        local_port: 9998,
+        subdomain: "noauth"
+      )
+      client.auto_reconnect = false
+
+      client.on_error { |error| error_received.send(error) }
+
+      spawn { client.start }
+
+      select
+      when error = error_received.receive
+        error.should contain("Not authenticated")
+      when timeout(5.seconds)
+        fail "Should have received auth error"
+      end
+
+      client.stop
+    end
   end
 
   describe "Subdomain management" do
@@ -733,6 +782,233 @@ describe "End-to-end tunnel integration" do
 
       client.stop
       local_server.close
+    end
+  end
+
+  describe "Basic auth" do
+    it "requires Authorization header when tunnel auth is configured" do
+      local_port = 19955
+      server_port = 19954
+      tunnel_connected = Channel(String).new
+
+      local_server = HTTP::Server.new do |ctx|
+        ctx.response.content_type = "text/plain"
+        ctx.response.print("Authorized")
+      end
+      local_server.bind_tcp("127.0.0.1", local_port)
+
+      spawn { local_server.listen }
+      sleep 0.1.seconds
+
+      tunnel_server = Sellia::Server::Server.new(
+        host: "127.0.0.1",
+        port: server_port,
+        domain: "127.0.0.1:#{server_port}",
+        require_auth: false
+      )
+
+      spawn { tunnel_server.start }
+      sleep 0.2.seconds
+
+      client = Sellia::CLI::TunnelClient.new(
+        server_url: "http://127.0.0.1:#{server_port}",
+        local_port: local_port,
+        subdomain: "basic",
+        auth: "user:pass"
+      )
+      client.auto_reconnect = false
+
+      client.on_connect { |url| tunnel_connected.send(url) }
+      spawn { client.start }
+
+      select
+      when tunnel_connected.receive
+        # Connected
+      when timeout(5.seconds)
+        fail "Tunnel did not connect within timeout"
+      end
+
+      http_client = HTTP::Client.new("127.0.0.1", server_port)
+      http_client.before_request do |request|
+        request.headers["Host"] = "basic.127.0.0.1:#{server_port}"
+      end
+
+      response = http_client.get("/")
+      response.status_code.should eq(401)
+      response.headers["WWW-Authenticate"]?.should_not be_nil
+
+      auth_header = Base64.strict_encode("user:pass")
+      response = http_client.get("/", headers: HTTP::Headers{"Authorization" => "Basic #{auth_header}"})
+
+      response.status_code.should eq(200)
+      response.body.should eq("Authorized")
+
+      client.stop
+      local_server.close
+      http_client.close
+    end
+  end
+
+  describe "Rate limiting" do
+    it "rejects tunnel creation when rate limit is exceeded" do
+      server_port = 19953
+      error_received = Channel(String).new
+
+      limits = Sellia::Server::CompositeRateLimiter::Limits.new(
+        connections_per_ip: Sellia::Server::RateLimiter::Config.new(max_tokens: 10.0, refill_rate: 10.0),
+        tunnels_per_client: Sellia::Server::RateLimiter::Config.new(max_tokens: 0.0, refill_rate: 0.0),
+        requests_per_tunnel: Sellia::Server::RateLimiter::Config.new(max_tokens: 10.0, refill_rate: 10.0),
+      )
+      limiter = Sellia::Server::CompositeRateLimiter.new(limits, enabled: true)
+
+      tunnel_server = Sellia::Server::Server.new(
+        host: "127.0.0.1",
+        port: server_port,
+        domain: "127.0.0.1:#{server_port}",
+        require_auth: false
+      )
+      tunnel_server.set_rate_limiter_for_test(limiter)
+
+      spawn { tunnel_server.start }
+      sleep 0.2.seconds
+
+      client = Sellia::CLI::TunnelClient.new(
+        server_url: "http://127.0.0.1:#{server_port}",
+        local_port: 9997,
+        subdomain: "ratelimit"
+      )
+      client.auto_reconnect = false
+      client.on_error { |error| error_received.send(error) }
+      spawn { client.start }
+
+      select
+      when error = error_received.receive
+        error.should contain("Rate limit exceeded")
+      when timeout(5.seconds)
+        fail "Should have received rate limit error"
+      end
+
+      client.stop
+    end
+
+    it "returns 429 when request rate limit is exceeded" do
+      local_port = 19952
+      server_port = 19951
+      tunnel_connected = Channel(String).new
+
+      local_server = HTTP::Server.new do |ctx|
+        ctx.response.content_type = "text/plain"
+        ctx.response.print("OK")
+      end
+      local_server.bind_tcp("127.0.0.1", local_port)
+
+      spawn { local_server.listen }
+      sleep 0.1.seconds
+
+      limits = Sellia::Server::CompositeRateLimiter::Limits.new(
+        connections_per_ip: Sellia::Server::RateLimiter::Config.new(max_tokens: 10.0, refill_rate: 10.0),
+        tunnels_per_client: Sellia::Server::RateLimiter::Config.new(max_tokens: 10.0, refill_rate: 10.0),
+        requests_per_tunnel: Sellia::Server::RateLimiter::Config.new(max_tokens: 0.0, refill_rate: 0.0),
+      )
+      limiter = Sellia::Server::CompositeRateLimiter.new(limits, enabled: true)
+
+      tunnel_server = Sellia::Server::Server.new(
+        host: "127.0.0.1",
+        port: server_port,
+        domain: "127.0.0.1:#{server_port}",
+        require_auth: false
+      )
+      tunnel_server.set_rate_limiter_for_test(limiter)
+
+      spawn { tunnel_server.start }
+      sleep 0.2.seconds
+
+      client = Sellia::CLI::TunnelClient.new(
+        server_url: "http://127.0.0.1:#{server_port}",
+        local_port: local_port,
+        subdomain: "ratereq"
+      )
+      client.auto_reconnect = false
+      client.on_connect { |url| tunnel_connected.send(url) }
+      spawn { client.start }
+
+      select
+      when tunnel_connected.receive
+        # Connected
+      when timeout(5.seconds)
+        fail "Tunnel did not connect within timeout"
+      end
+
+      http_client = HTTP::Client.new("127.0.0.1", server_port)
+      http_client.before_request do |request|
+        request.headers["Host"] = "ratereq.127.0.0.1:#{server_port}"
+      end
+
+      response = http_client.get("/")
+      response.status_code.should eq(429)
+      response.body.should contain("Rate limit exceeded")
+
+      client.stop
+      local_server.close
+      http_client.close
+    end
+  end
+
+  describe "Request timeouts" do
+    it "returns 504 when the tunnel does not respond in time" do
+      local_port = 19950
+      server_port = 19949
+      tunnel_connected = Channel(String).new
+
+      local_server = HTTP::Server.new do |ctx|
+        sleep 0.5.seconds
+        ctx.response.content_type = "text/plain"
+        ctx.response.print("Slow response")
+      end
+      local_server.bind_tcp("127.0.0.1", local_port)
+
+      spawn { local_server.listen }
+      sleep 0.1.seconds
+
+      tunnel_server = Sellia::Server::Server.new(
+        host: "127.0.0.1",
+        port: server_port,
+        domain: "127.0.0.1:#{server_port}",
+        require_auth: false
+      )
+      tunnel_server.set_request_timeout_for_test(0.05.seconds)
+
+      spawn { tunnel_server.start }
+      sleep 0.2.seconds
+
+      client = Sellia::CLI::TunnelClient.new(
+        server_url: "http://127.0.0.1:#{server_port}",
+        local_port: local_port,
+        subdomain: "slow"
+      )
+      client.auto_reconnect = false
+      client.on_connect { |url| tunnel_connected.send(url) }
+      spawn { client.start }
+
+      select
+      when tunnel_connected.receive
+        # Connected
+      when timeout(5.seconds)
+        fail "Tunnel did not connect within timeout"
+      end
+
+      http_client = HTTP::Client.new("127.0.0.1", server_port)
+      http_client.before_request do |request|
+        request.headers["Host"] = "slow.127.0.0.1:#{server_port}"
+      end
+
+      response = http_client.get("/")
+      response.status_code.should eq(504)
+      response.body.should contain("Gateway timeout")
+
+      client.stop
+      local_server.close
+      http_client.close
     end
   end
 end
