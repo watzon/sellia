@@ -169,47 +169,50 @@ module Sellia::Server
       context.response.upgrade do |io|
         Log.info { "WebSocket #{request_id}: upgrade handler executing, waiting for CLI confirmation" }
 
-        # Wait for CLI to confirm local connection before starting frame loop
-        # This times out if the CLI doesn't respond
-        unless pending_ws.wait_for_upgrade(@request_timeout)
-          Log.warn { "WebSocket #{request_id}: upgrade timeout - CLI did not confirm" }
-          next
-        end
+        begin
+          # Wait for CLI to confirm local connection before starting frame loop
+          # This times out if the CLI doesn't respond
+          unless pending_ws.wait_for_upgrade(@request_timeout)
+            Log.warn { "WebSocket #{request_id}: upgrade timeout - CLI did not confirm" }
+            @pending_websockets.remove(request_id)
+            next
+          end
 
-        Log.info { "WebSocket #{request_id}: CLI confirmed, starting frame reader" }
+          Log.info { "WebSocket #{request_id}: CLI confirmed, starting frame reader" }
 
-        # Create WebSocket protocol instance for reading frames from the external client
-        # Server-side means unmasked reads, masked writes
-        ws_protocol = HTTP::WebSocket::Protocol.new(io, masked: false, sync_close: false)
+          # Create WebSocket protocol instance for reading frames from the external client
+          # Server-side means unmasked reads, masked writes
+          ws_protocol = HTTP::WebSocket::Protocol.new(io, masked: false, sync_close: false)
 
-        # Store the protocol in pending_ws so it can be used to send frames back to the client
-        pending_ws.ws_protocol = ws_protocol
+          # Store the protocol in pending_ws so it can be used to send frames back to the client
+          pending_ws.ws_protocol = ws_protocol
 
-        # Set up frame forwarding from external client to tunnel client
-        pending_ws.on_frame do |opcode, payload|
-          Log.debug { "WebSocket #{request_id}: forwarding frame to CLI: opcode=#{opcode}, size=#{payload.size}" }
-          client.send(Protocol::Messages::WebSocketFrame.new(
-            request_id: request_id,
-            opcode: opcode,
-            payload: payload
-          ))
-        end
+          # Set up frame forwarding from external client to tunnel client
+          pending_ws.on_frame do |opcode, payload|
+            Log.debug { "WebSocket #{request_id}: forwarding frame to CLI: opcode=#{opcode}, size=#{payload.size}" }
+            client.send(Protocol::Messages::WebSocketFrame.new(
+              request_id: request_id,
+              opcode: opcode,
+              payload: payload
+            ))
+          end
 
-        pending_ws.on_close do |code|
-          Log.info { "WebSocket #{request_id}: external client closed, code=#{code.inspect}" }
-          client.send(Protocol::Messages::WebSocketClose.new(
-            request_id: request_id,
-            code: code
-          ))
+          pending_ws.on_close do |code|
+            Log.info { "WebSocket #{request_id}: external client closed, code=#{code.inspect}" }
+            client.send(Protocol::Messages::WebSocketClose.new(
+              request_id: request_id,
+              code: code
+            ))
+            @pending_websockets.remove(request_id)
+          end
+
+          # Run the frame reading loop
+          run_websocket_frame_loop(request_id, ws_protocol, pending_ws, io)
+        ensure
+          Log.debug { "WebSocket #{request_id}: upgrade handler complete, removing from store" }
           @pending_websockets.remove(request_id)
         end
-
-        # Run the frame reading loop
-        run_websocket_frame_loop(request_id, ws_protocol, pending_ws, io)
       end
-
-      Log.debug { "WebSocket #{request_id} connection closed, removing from store" }
-      @pending_websockets.remove(request_id)
     end
 
     private def select_websocket_protocol(header : String?) : String?
