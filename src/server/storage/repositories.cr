@@ -113,7 +113,7 @@ module Sellia::Server::Storage
       def self.create(
         plaintext_key : String,
         name : String? = nil,
-        is_master : Bool = false
+        is_master : Bool = false,
       ) : Models::ApiKey
         key_hash = Models::ApiKey.hash_key(plaintext_key)
         key_prefix = Models::ApiKey.extract_prefix(plaintext_key)

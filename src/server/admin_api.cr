@@ -97,7 +97,7 @@ module Sellia::Server
         handle_add_reserved(context)
       elsif path.starts_with?("/api/admin/reserved/") && context.request.method == "DELETE"
         handle_remove_reserved(context)
-      # API key endpoints
+        # API key endpoints
       elsif path == "/api/admin/api-keys" && context.request.method == "GET"
         handle_list_api_keys(context)
       elsif path == "/api/admin/api-keys" && context.request.method == "POST"
@@ -118,8 +118,8 @@ module Sellia::Server
       reserved = Storage::Repositories::ReservedSubdomains.all
       data = reserved.map do |r|
         {
-          subdomain: r.subdomain,
-          reason:    r.reason,
+          subdomain:  r.subdomain,
+          reason:     r.reason,
           is_default: r.is_default,
           created_at: r.created_at.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
         }
@@ -168,10 +168,10 @@ module Sellia::Server
         refresh_reserved_subdomains
 
         json_response(context, HTTP::Status::CREATED, {
-          subdomain:   subdomain,
-          reason:      reason,
-          is_default:  false,
-          created_at:  Time.utc.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
+          subdomain:  subdomain,
+          reason:     reason,
+          is_default: false,
+          created_at: Time.utc.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
         })
       rescue ex : JSON::ParseException
         error_response(context, "Invalid JSON: #{ex.message}")
@@ -213,12 +213,12 @@ module Sellia::Server
       api_keys = Storage::Repositories::ApiKeys.all
       data = api_keys.map do |k|
         {
-          id:          k.id,
-          key_prefix:  k.key_prefix,
-          name:        k.name,
-          is_master:   k.is_master,
-          active:      k.active,
-          created_at:  k.created_at.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
+          id:           k.id,
+          key_prefix:   k.key_prefix,
+          name:         k.name,
+          is_master:    k.is_master,
+          active:       k.active,
+          created_at:   k.created_at.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
           last_used_at: k.last_used_at.try(&.to_s("%Y-%m-%dT%H:%M:%S.%6%z")),
         }
       end
@@ -249,13 +249,13 @@ module Sellia::Server
 
         # Return the full key (only shown once)
         json_response(context, HTTP::Status::CREATED, {
-          id:          key_record.id,
-          key:         new_key,  # Only shown on creation
-          key_prefix:  key_record.key_prefix,
-          name:        name,
-          is_master:   is_master,
-          active:      true,
-          created_at:  Time.utc.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
+          id:         key_record.id,
+          key:        new_key, # Only shown on creation
+          key_prefix: key_record.key_prefix,
+          name:       name,
+          is_master:  is_master,
+          active:     true,
+          created_at: Time.utc.to_s("%Y-%m-%dT%H:%M:%S.%6%z"),
         })
       rescue ex : JSON::ParseException
         error_response(context, "Invalid JSON: #{ex.message}")

@@ -21,7 +21,7 @@ module Sellia::Server::Storage::Models
       @reason : String? = nil,
       @created_at : Time = Time.utc,
       @is_default : Bool = false,
-      @id : Int64? = nil
+      @id : Int64? = nil,
     )
     end
 
@@ -54,7 +54,7 @@ module Sellia::Server::Storage::Models
       @active : Bool = true,
       @created_at : Time = Time.utc,
       @last_used_at : Time? = nil,
-      @id : Int64? = nil
+      @id : Int64? = nil,
     )
     end
 
