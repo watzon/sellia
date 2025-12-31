@@ -1,7 +1,6 @@
 # Sellia
 
-[![Crystal](https://img.shields.io/badge/crystal-%3E%3D1.10.0-black?logo=crystal)](https://crystal-lang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Crystal](https://img.shields.io/badge/crystal-%3E%3D1.10.0-black?logo=crystal)](https://crystal-lang.org) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/watzon/sellia)
 
 Secure tunnels to localhost. A self-hosted ngrok alternative written in Crystal.
 
